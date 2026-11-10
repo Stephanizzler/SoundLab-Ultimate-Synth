@@ -18,6 +18,10 @@ import RenderWorker from "./render-worker.ts?worker&inline";
 import type { Tick, ToWorklet } from "./worklet.ts";
 import { runRender, type RenderJob, type RenderReply } from "./render-worker.ts";
 
+// The claude.ai viewer refuses confirm() dialogs, so there the action simply goes ahead.
+const inViewer = !!(window as unknown as { claude?: unknown }).claude;
+const ask = (msg: string) => inViewer || window.confirm(msg);
+
 // Design tokens -> CSS variables, so the page matches the other Pro apps.
 for (const [k, v] of Object.entries(color)) document.documentElement.style.setProperty(`--${k}`, v);
 const clock = { now: () => new Date().toISOString(), id: () => crypto.randomUUID() };
@@ -232,7 +236,7 @@ function renderRack() {
   knobRegistry.clear();
   const rack = $("rack"); rack.replaceChildren();
   const perf = select([{ value: "", label: "Load a performance (split / layer / multi)…" }, ...PERFORMANCES.map((p) => ({ value: p.name, label: p.name }))], "", (v) => {
-    if (v && confirm(`${PERFORMANCES.find((p) => p.name === v)?.about}\n\nThis replaces the rack's slots (the patterns stay).`)) loadPerformance(v); else renderRack();
+    if (v && ask(`${PERFORMANCES.find((p) => p.name === v)?.about}\n\nThis replaces the rack's slots (the patterns stay).`)) loadPerformance(v); else renderRack();
   }, "Performance");
   rack.append(h("div", { class: "row wrap", style: "margin:0 0 4px" }, perf, h("span", { class: "muted small" }, "Every slot is a part with its own MIDI channel, key range and transpose (open a slot: Part), so the rack splits and layers like a Jupiter-8, a Nord Lead or a Virus in Multi mode.")));
   state.slots.forEach((_, i) => rack.append(slotUnit(i)));
@@ -771,13 +775,13 @@ function loadState(s: SynthState) {
   send({ type: "stop" }); setPlaying(false); commit(); renderAll();
 }
 $("newSession").addEventListener("click", () => {
-  if (!confirm("Start an empty session? The current one is replaced (download its patch first to keep it).")) return;
+  if (!ask("Start an empty session? The current one is replaced (download its patch first to keep it).")) return;
   const s = demoState();
   s.name = "Untitled"; s.slots = s.slots.map(() => slotState("")); s.slots[0] = slotState("studio-poly"); s.cables = [];
   s.patterns = s.patterns.map(() => ({ tracks: Array.from({ length: TRACKS }, (_, i) => emptyTrack(i, i === 0 ? [0] : [])) }));
   loadState(s);
 });
-$("demo").addEventListener("click", () => { if (confirm("Load the demo session? The current one is replaced.")) loadState(demoState()); });
+$("demo").addEventListener("click", () => { if (ask("Load the demo session? The current one is replaced.")) loadState(demoState()); });
 
 // Downloads: the claude.ai viewer only saves some file types, so files come zipped there.
 type Downloads = { save: (r: { filename: string; data: Uint8Array }) => Promise<unknown> };
