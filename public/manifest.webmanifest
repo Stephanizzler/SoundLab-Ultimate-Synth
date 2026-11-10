@@ -1,0 +1,15 @@
+{
+  "name": "SoundLab Ultimate Synth",
+  "short_name": "Ultimate Synth",
+  "description": "Sixteen classic synths and drum machines in one rack, played by a step sequencer you can patch to anything.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0D0F12",
+  "theme_color": "#0D0F12",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
