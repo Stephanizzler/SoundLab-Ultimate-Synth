@@ -64,6 +64,7 @@ export function control(key: string, d: ParamDef, value: number, onChange: (v: n
   const mk = (cls: string) => { const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", "22"); c.setAttribute("cy", "22"); c.setAttribute("r", String(R)); c.setAttribute("class", cls); c.setAttribute("transform", "rotate(135 22 22)"); svg.append(c); return c; };
   mk("k-track").setAttribute("stroke-dasharray", arcDash(1));
   const val = mk("k-val");
+  const cap = document.createElementNS(NS, "circle"); cap.setAttribute("cx", "22"); cap.setAttribute("cy", "22"); cap.setAttribute("r", "12.5"); cap.setAttribute("class", "k-cap"); svg.append(cap);
   const dot = document.createElementNS(NS, "circle"); dot.setAttribute("r", "2.6"); dot.setAttribute("class", "k-mod"); svg.append(dot);
   const ptr = document.createElementNS(NS, "line"); ptr.setAttribute("x1", "22"); ptr.setAttribute("y1", "22"); ptr.setAttribute("class", "k-ptr"); svg.append(ptr);
   const out = h("output", {});
@@ -74,7 +75,8 @@ export function control(key: string, d: ParamDef, value: number, onChange: (v: n
     const n = toNorm(d, v);
     val.setAttribute("stroke-dasharray", arcDash(n));
     const a = ((135 + n * ARC) * Math.PI) / 180;
-    ptr.setAttribute("x2", String(22 + Math.cos(a) * (R - 6))); ptr.setAttribute("y2", String(22 + Math.sin(a) * (R - 6)));
+    ptr.setAttribute("x1", String(22 + Math.cos(a) * 4)); ptr.setAttribute("y1", String(22 + Math.sin(a) * 4));
+    ptr.setAttribute("x2", String(22 + Math.cos(a) * 11)); ptr.setAttribute("y2", String(22 + Math.sin(a) * 11));
     out.textContent = formatParam(d, v);
     knob.setAttribute("aria-valuenow", String(Math.round(n * 100))); knob.setAttribute("aria-valuetext", formatParam(d, v));
   };

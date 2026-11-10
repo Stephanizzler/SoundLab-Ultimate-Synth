@@ -66,7 +66,7 @@ class MsVoice extends Voice {
 }
 
 export const ms20: MachineDef = {
-  id: "scream-mono", name: "Scream Mono", inspiredBy: "Korg MS-20 (1978)", kind: "mono", voices: 1, level: 2.2,
+  id: "scream-mono", name: "Ms. Twenty", inspiredBy: "Korg MS-20 (1978)", kind: "mono", voices: 1, level: 2.2,
   about: "VCO-1 (triangle, saw, variable pulse, white noise) and VCO-2 (saw, square, narrow pulse, ring mod with VCO-1), then the resonant high-pass and low-pass, both Korg 35 circuits with nonlinear positive feedback that scream and self-oscillate. The modulation generator morphs from ramp through triangle to saw; EG1 (delay, attack, release) bends pitch, EG2 (hold, attack, decay, sustain, release) drives the filters and the amplifier. Low-note priority, as on the original.",
   params, glideParam: "glide", priority: "low",
   createVoice: (rate, i) => new MsVoice(rate, i + 51),

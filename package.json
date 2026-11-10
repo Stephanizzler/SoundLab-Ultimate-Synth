@@ -1,7 +1,7 @@
 {
   "name": "soundlab-synth",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SoundLab Ultimate Synth: a rack of classic-synth models and drum machines, played by a step sequencer that can be patched to anything. Runs in the browser.",
   "type": "module",
   "scripts": {

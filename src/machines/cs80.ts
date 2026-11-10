@@ -87,7 +87,7 @@ class CsVoice extends Voice {
 }
 
 export const cs80: MachineDef = {
-  id: "expressive-poly", name: "Expressive Poly", inspiredBy: "Yamaha CS-80 (1977)", kind: "poly", voices: 8, level: 0.84,
+  id: "expressive-poly", name: "SeaSaw-80", inspiredBy: "Yamaha CS-80 (1977)", kind: "poly", voices: 8, level: 0.84,
   about: "Eight voices, each with two full channels: an oscillator with square (and PWM), sawtooth, noise and a sine that skips the filters; a resonant high-pass and low-pass driven by the IL/AL envelope (from an initial level to an attack level, then down); and its own amplifier envelope. The sub oscillator modulates pitch, filters and level; velocity (initial touch) and aftertouch open the brilliance and raise the level; the ring modulator has its own attack and decay. Polyphonic aftertouch and the ribbon are not modelled: aftertouch is per channel, and pitch bend stands in for the ribbon.",
   params,
   createVoice: (rate, i) => new CsVoice(rate, i + 101),

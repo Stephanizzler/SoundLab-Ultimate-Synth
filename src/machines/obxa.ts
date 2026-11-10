@@ -65,7 +65,7 @@ class ObVoice extends Voice {
 }
 
 export const obxa: MachineDef = {
-  id: "multimode-poly", name: "Multimode Poly", inspiredBy: "Oberheim OB-Xa (1980) and SEM (1974)", kind: "poly", voices: 8, level: 0.49,
+  id: "multimode-poly", name: "Overheim OX-A", inspiredBy: "Oberheim OB-Xa (1980) and SEM (1974)", kind: "poly", voices: 8, level: 0.49,
   about: "Eight voices of two oscillators (saw and pulse each, sync, cross-mod, filter envelope sweeping osc 2), the 2-pole state-variable filter whose SEM mode sweeps low-pass, notch and high-pass (or band-pass), the OB-Xa's 4-pole option, an LFO (sine, square, sample & hold) to pitch, width and filter, and per-voice pan and drift for the wide, loose Oberheim sound.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new ObVoice(rate, i + 41),

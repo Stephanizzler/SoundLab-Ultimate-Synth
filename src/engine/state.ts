@@ -143,21 +143,21 @@ export function slotState(machine: string, preset = 0): SlotState {
 // leaves the patterns alone.
 type Part = { machine: string; preset: string; channel?: number; keyLo?: number; keyHi?: number; transpose?: number; level?: number; pan?: number };
 export const PERFORMANCES: { name: string; about: string; parts: Part[] }[] = [
-  { name: "Split: Moog bass / Jupiter brass", about: "Keys below middle C play a Minimoog-style bass an octave down; above it, unison Jupiter brass.", parts: [
+  { name: "Split: MiniMood bass / Juniper brass", about: "Keys below middle C play a MiniMood bass an octave down; above it, unison Juniper brass.", parts: [
     { machine: "ladder-mono", preset: "Classic bass", keyHi: 59, level: -6 }, { machine: "flagship-poly", preset: "Unison brass", keyLo: 60, level: -8 }] },
-  { name: "Dual: Juno strings + Solina", about: "Both slots on the whole keyboard: Juno PWM strings layered with the string machine.", parts: [
+  { name: "Dual: Juneau strings + Saline Ensemble", about: "Both slots on the whole keyboard: Juneau PWM strings layered with the Saline Ensemble.", parts: [
     { machine: "chorus-poly", preset: "PWM strings", level: -9, pan: -0.3 }, { machine: "string-machine", preset: "Full ensemble", level: -10, pan: 0.3 }] },
-  { name: "Layer: CS-80 pad + DX7 strings", about: "The CS-80's blade pad layered with FM strings for a wide, moving pad.", parts: [
+  { name: "Layer: SeaSaw pad + DeLuxe strings", about: "The SeaSaw-80's blade pad layered with DeLuxe-7 FM strings for a wide, moving pad.", parts: [
     { machine: "expressive-poly", preset: "Blade pad", level: -8 }, { machine: "fm-six", preset: "Strings", level: -12 }] },
-  { name: "Split: Prophet bass / DX7 piano", about: "Prophet-5 brass-bass on the left hand, DX7 electric piano on the right.", parts: [
+  { name: "Split: Profit bass / DeLuxe piano", about: "Profit-5 brass-bass on the left hand, DeLuxe-7 electric piano on the right.", parts: [
     { machine: "studio-poly", preset: "Brass", keyHi: 54, transpose: -12, level: -8 }, { machine: "fm-six", preset: "Electric piano", keyLo: 55, level: -6 }] },
-  { name: "Virus Multi: 4 parts on 4 channels", about: "Lead, bass, pad and drums on MIDI channels 1-4, ready for a DAW or the sequencer.", parts: [
+  { name: "Excess Viral multi: 4 parts on 4 channels", about: "Lead, bass, pad and drums on MIDI channels 1-4, ready for a DAW or the sequencer.", parts: [
     { machine: "super-va", preset: "Trance HyperSaw", channel: 1, level: -10 }, { machine: "super-va", preset: "Hard bass", channel: 2, level: -8 },
     { machine: "super-va", preset: "Vocal pad", channel: 3, level: -12 }, { machine: "punch-kit", preset: "Club punch", channel: 4, level: -4 }] },
-  { name: "Nord Lead slots A-D", about: "Four Nord Lead 2 programs on channels 1-4, as in its multitimbral mode.", parts: [
+  { name: "Nerd Lead slots A-D", about: "Four Nerd Lead 2 programs on channels 1-4, as in its multitimbral mode.", parts: [
     { machine: "lead-va", preset: "Sync sweep lead", channel: 1, level: -10 }, { machine: "lead-va", preset: "FM bass", channel: 2, level: -8 },
     { machine: "lead-va", preset: "PWM pad", channel: 3, level: -12 }, { machine: "lead-va", preset: "Arpeggio", channel: 4, level: -10 }] },
-  { name: "Three-way split: 303 / Juno / PPG", about: "Acid bass under C2, Juno chords from C2 to B3, PPG bells from C4 up.", parts: [
+  { name: "Three-way split: TeaBag / Juneau / PBJ", about: "TeaBag-303 acid under C2, Juneau chords from C2 to B3, PBJ Wave bells from C4 up.", parts: [
     { machine: "acid-bass", preset: "Squelch", keyHi: 47, level: -6 }, { machine: "chorus-poly", preset: "Classic chorus poly", keyLo: 48, keyHi: 59, level: -9 },
     { machine: "wave-scanner", preset: "Bell partials", keyLo: 60, level: -10 }] },
 ];

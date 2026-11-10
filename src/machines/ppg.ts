@@ -52,7 +52,7 @@ class PpgVoice extends Voice {
 }
 
 export const ppg: MachineDef = {
-  id: "wave-scanner", name: "Wave Scanner", inspiredBy: "PPG Wave 2.2 / 2.3 (1982-84)", kind: "poly", voices: 8, level: 1.07,
+  id: "wave-scanner", name: "PBJ Wave 2.3", inspiredBy: "PPG Wave 2.2 / 2.3 (1982-84)", kind: "poly", voices: 8, level: 1.07,
   about: "A wavetable oscillator and a detunable sub-oscillator reading the same table (with its own offset), scanned by ENV 2, the LFO, the keyboard and the mod wheel; a deliberately coarse 8-bit sound path; and an analog-style 24 dB low-pass with ENV 1 and keyboard tracking; ENV 3 on the VCA; the LFO with delay to pitch, filter and amp. Fourteen generated wavetables, including the classic analog shapes.",
   params,
   createVoice: (rate, i) => new PpgVoice(rate, i + 91),

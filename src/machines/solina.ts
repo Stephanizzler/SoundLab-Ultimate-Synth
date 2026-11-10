@@ -48,7 +48,7 @@ class SolinaVoice extends Voice {
 class SolinaFx { e: Ensemble; constructor(rate: number) { this.e = new Ensemble(rate); } process(L: Float32Array, R: Float32Array, n: number, p: Float64Array) { if (p[P.ensOn] > 0.5) this.e.process(L, R, n, p[P.ens]); } }
 
 export const solina: MachineDef = {
-  id: "string-machine", name: "String Machine", inspiredBy: "ARP / Eminent Solina String Ensemble (1974)", kind: "poly", voices: 24, level: 0.92,
+  id: "string-machine", name: "Saline Ensemble", inspiredBy: "ARP / Eminent Solina String Ensemble (1974)", kind: "poly", voices: 24, level: 0.92,
   about: "Divide-down sawtooth registers voiced as violin (bright 8' and 4'), viola, cello (16' and 8'), contrabass (16', lower half only), trumpet and horn (pulse waves through brass formants), each switched on or off like the original's tabs; crescendo and sustain; and the three-line ensemble chorus that turns them into a section.",
   params,
   createVoice: (rate, i) => new SolinaVoice(rate, i + 131),

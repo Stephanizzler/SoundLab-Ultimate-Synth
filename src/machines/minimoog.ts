@@ -93,7 +93,7 @@ class MoogVoice extends Voice {
 }
 
 export const minimoog: MachineDef = {
-  id: "ladder-mono", name: "Ladder Mono", inspiredBy: "Moog Minimoog Model D (1970)", kind: "mono", voices: 1, level: 1.3,
+  id: "ladder-mono", name: "MiniMood Model Q", inspiredBy: "Moog Minimoog Model D (1970)", kind: "mono", voices: 1, level: 1.3,
   about: "Three oscillators (32' to 2' plus LO; osc 3 can leave the keyboard and become an LFO), a mixer with noise and the external-input feedback trick, and the 24 dB transistor ladder with its contour generators. The modulation mix blends osc 3 and noise; the wheel sets how much reaches the oscillators and the filter. Monophonic with low-note priority and single triggering, as on the original.",
   params, glideParam: "glide", priority: "low",
   createVoice: (rate, i) => new MoogVoice(rate, i),

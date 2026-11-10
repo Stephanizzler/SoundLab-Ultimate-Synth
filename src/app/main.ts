@@ -1,7 +1,8 @@
 import { color } from "../core/design.ts";
 import { readBundle, writeBundle, problems, owner, BUNDLE_MIME, type Project, type Loudness } from "../core/index.ts";
 import { MACHINES, machineById, drumName } from "../machines/index.ts";
-import { MIXER_PARAMS, formatParam, type ParamDef } from "../engine/machine.ts";
+import { MIXER_PARAMS, formatParam, type MachineDef, type ParamDef } from "../engine/machine.ts";
+import { faceOf } from "./faces.ts";
 import {
   CHORDS, DIVISIONS, FX_PARAMS, MOD_PARAMS, PATTERNS, SLOTS, TRACKS, MAX_STEPS, TRACK_OUTPUTS,
   PERFORMANCES, compactState, demoState, destinations, emptyStep, emptyTrack, performanceSlots, sanitizeState, slotParamDefs, slotState, sources,
@@ -139,7 +140,7 @@ function onTick(t: Tick) {
    ========================================================================= */
 const machineOptions = [
   { value: "", label: "— Empty —" },
-  ...MACHINES.map((m) => ({ value: m.id, label: `${m.name} · ${m.inspiredBy.replace(/ \(\d{4}.*\)$/, "")}`, group: m.kind === "drum" ? "Drum machines" : m.kind === "mono" ? "Mono synths" : "Poly synths" })),
+  ...MACHINES.map((m) => ({ value: m.id, label: `${m.name} (after the ${m.inspiredBy.replace(/ \(\d{4}.*\)$/, "")})`, group: m.kind === "drum" ? "Drum machines" : m.kind === "mono" ? "Mono synths" : "Poly synths" })),
 ];
 function setParam(unitKey: string, id: string, v: number) {
   if (unitKey === "fx") state.fx[id] = v; else if (unitKey === "mod") state.mod[id] = v; else state.slots[Number(unitKey)].params[id] = v;
@@ -169,14 +170,31 @@ function slotUnit(i: number) {
   const machineSel = select(machineOptions, s.machine, (v) => changeMachine(i, v), `Slot ${i + 1} machine`); machineSel.classList.add("machine");
   const presetSel = m ? select(m.presets.map((p) => ({ value: p.name, label: p.name })).concat(m.presets.some((p) => p.name === s.preset) ? [] : [{ value: s.preset, label: s.preset || "Custom" }]), s.preset, (v) => applyPreset(i, v), `Slot ${i + 1} preset`) : null;
   presetSel?.classList.add("preset");
-  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), machineSel, presetSel, m ? partBadge(s.params) : null, mute, solo, playHere, toggle);
+  const swatch = m ? h("span", { class: "swatch", "aria-hidden": "true" }) : null;
+  if (swatch && m) swatch.style.background = faceOf(m.id).v["--fp-bg"];
+  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), swatch, machineSel, presetSel, m ? partBadge(s.params) : null, mute, solo, playHere, toggle);
   const unit = h("div", { class: `unit ${ui.slot === i ? "sel" : ""}`, id: `slot${i}` }, head);
-  if (open && m) {
-    unit.append(h("div", { class: "ubody" },
-      h("p", { class: "about" }, h("strong", {}, `Modelled on the ${m.inspiredBy}. `), m.about),
-      controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], s.params)));
-  }
+  if (open && m) unit.append(faceplate(i, m, s.preset, s.params));
   return unit;
+}
+// The open panel, dressed as the machine's faceplate (see faces.ts).
+function faceplate(i: number, m: MachineDef, preset: string, values: Record<string, number>) {
+  const f = faceOf(m.id);
+  const body = h("div", { class: `ubody face ${f.cheeks ? `cheeks-${f.cheeks}` : ""} plate-${f.plate ?? "wide"}` });
+  for (const [k, val] of Object.entries(f.v)) body.style.setProperty(k, val);
+  if (f.font) body.style.setProperty("--fp-font", f.font);
+  const lcd = f.lcd ? h("div", { class: "lcd", "aria-hidden": "true" }, h("span", {}, `${String(i + 1).padStart(2, "0")} ${preset || "Init"}`.toUpperCase().slice(0, 18)), h("span", {}, m.name.toUpperCase().slice(0, 18))) : null;
+  body.append(h("div", { class: "plate" }, h("div", { class: "brandbox" }, h("span", { class: "brand" }, m.name), h("span", { class: "tag" }, f.tagline)), lcd));
+  body.append(h("p", { class: "about" }, h("strong", {}, `Modelled on the ${m.inspiredBy}. `), m.about, " ", h("em", {}, "Not affiliated with or endorsed by the original's maker.")));
+  const grid = controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], values);
+  let k = 0;
+  grid.querySelectorAll<HTMLFieldSetElement>("fieldset.grp").forEach((fs) => {
+    const g = fs.querySelector("legend")?.textContent ?? "";
+    if (g === "Part" || g === "Slot output") { fs.classList.add("sl"); return; } // SoundLab's own controls keep the app's look
+    if (f.stripes) fs.style.setProperty("--stripe", f.stripes[k++ % f.stripes.length]);
+  });
+  body.append(grid);
+  return body;
 }
 // A short note of a slot's part settings when they differ from "every key, any channel".
 function partBadge(p: Record<string, number>) {

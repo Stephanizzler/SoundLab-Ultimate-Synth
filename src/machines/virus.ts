@@ -140,7 +140,7 @@ class VirusVoice extends Voice {
 class VirusFx { c: JunoChorus; constructor(rate: number) { this.c = new JunoChorus(rate); } process(L: Float32Array, R: Float32Array, n: number, p: Float64Array) { this.c.process(L, R, n, Math.round(p[P.chorus])); } }
 
 export const virus: MachineDef = {
-  id: "super-va", name: "Super VA", inspiredBy: "Access Virus B / C / TI (1999-2005)", kind: "poly", voices: 16, level: 1.08,
+  id: "super-va", name: "Excess Viral", inspiredBy: "Access Virus B / C / TI (1999-2005)", kind: "poly", voices: 16, level: 1.08,
   about: "Three oscillators: osc 1 Classic (one knob morphs sine, triangle, saw and pulse), HyperSaw (up to nine detuned saws) or Wavetable; osc 2 Classic or Wavetable with sync, FM from osc 1 and filter-envelope pitch and FM; osc 3 (slave, saw, pulse, sine, triangle). Sub, coloured noise and ring modulator. Two multimode filters (low, high, band, band-stop) routed Serial 4, Serial 6, Parallel or Split, with eight saturation curves; envelopes with sustain slope; three LFOs; unison with detune and spread; arpeggiator; chorus. Multi mode is the rack itself: give slots their own MIDI channels.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new VirusVoice(rate, i + 71),

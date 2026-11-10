@@ -56,7 +56,7 @@ class JunoVoice extends Voice {
 class JunoFx { c: JunoChorus; constructor(rate: number) { this.c = new JunoChorus(rate); } process(L: Float32Array, R: Float32Array, n: number, p: Float64Array) { this.c.process(L, R, n, Math.round(p[P.chorus])); } }
 
 export const juno60: MachineDef = {
-  id: "chorus-poly", name: "Chorus Poly", inspiredBy: "Roland Juno-60 (1982)", kind: "poly", voices: 6, level: 1.29,
+  id: "chorus-poly", name: "Juneau-60", inspiredBy: "Roland Juno-60 (1982)", kind: "poly", voices: 6, level: 1.29,
   about: "Six voices, each one stable DCO with pulse (width from the LFO or set by hand), sawtooth, a sub-octave square and noise; the four-position high-pass; a 4-pole resonant VCF with envelope polarity, LFO and keyboard follow; a VCA on the envelope or gate; one ADSR; the delayed LFO; the arpeggiator (up, down, up & down over 1-3 octaves); and the stereo bucket-brigade chorus I, II and I + II.",
   params,
   createVoice: (rate, i) => new JunoVoice(rate, i + 21),

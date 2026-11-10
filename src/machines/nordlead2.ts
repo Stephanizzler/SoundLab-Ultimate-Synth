@@ -75,7 +75,7 @@ class NordVoice extends Voice {
 }
 
 export const nordLead2: MachineDef = {
-  id: "lead-va", name: "Lead VA", inspiredBy: "Clavia Nord Lead 2 (1997)", kind: "poly", voices: 16, level: 0.57,
+  id: "lead-va", name: "Nerd Lead 2", inspiredBy: "Clavia Nord Lead 2 (1997)", kind: "poly", voices: 16, level: 0.57,
   about: "Osc 1 (pulse, saw, triangle, sine; frequency-modulated by osc 2) and osc 2 (pulse, saw, triangle, noise; sync, keyboard track off), the modulation envelope to osc 2 pitch (the classic sync sweep), FM or width, LFO 1 (five waves, five destinations), LFO 2, the multimode filter (12 and 24 dB low-pass, band-pass, high-pass, notch + low-pass) with distortion and velocity, mono/legato/unison, portamento, octave shift and the arpeggiator.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new NordVoice(rate, i + 81),

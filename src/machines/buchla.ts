@@ -64,7 +64,7 @@ class EaselVoice extends Voice {
 }
 
 export const buchla: MachineDef = {
-  id: "west-coast", name: "West Coast", inspiredBy: "Buchla Music Easel (1973) and 259 / 292", kind: "poly", voices: 6, level: 0.59,
+  id: "west-coast", name: "Bucolic Easel", inspiredBy: "Buchla Music Easel (1973) and 259 / 292", kind: "poly", voices: 6, level: 0.59,
   about: "No subtractive filter. The complex oscillator's principal wave morphs from spike to square, triangle and sine, then the timbre circuit folds it back on itself (with symmetry); the modulation oscillator (saw, square, triangle, keyboard-tracked or free) frequency- or amplitude-modulates it. An envelope (transient, sustained or self-cycling) and the pulser drive the index, the timbre and two vactrol low-pass gates, whose slow closing gives the plucked, woody sound. Monophonic like the Easel, or polyphonic if you choose.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new EaselVoice(rate, i + 121),

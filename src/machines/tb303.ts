@@ -57,7 +57,7 @@ class AcidVoice extends Voice {
   }
 }
 export const tb303: MachineDef = {
-  id: "acid-bass", name: "Acid Bass", inspiredBy: "Roland TB-303 Bass Line (1981)", kind: "mono", voices: 1, level: 0.79,
+  id: "acid-bass", name: "TeaBag-303", inspiredBy: "Roland TB-303 Bass Line (1981)", kind: "mono", voices: 1, level: 0.79,
   about: "One oscillator into a diode-ladder-style filter. The sequencer's accent and slide steps drive it like the original: accents shorten the filter decay and charge a sweep circuit, slides glide without retriggering.",
   params: acidParams, glideParam: "slide", slideOnly: true,
   createVoice: (rate, i) => new AcidVoice(rate, i + 61),

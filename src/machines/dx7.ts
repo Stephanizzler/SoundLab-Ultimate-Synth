@@ -154,7 +154,7 @@ function patch(globals: Record<string, number>, ops: (Op | null)[]): Record<stri
 }
 const EP_C = [96, 25, 25, 67], EP_L = [99, 75, 0, 0];
 export const dx7: MachineDef = {
-  id: "fm-six", name: "FM Six", inspiredBy: "Yamaha DX7 (1983)", kind: "poly", voices: 16, level: 0.45,
+  id: "fm-six", name: "DeLuxe-7", inspiredBy: "Yamaha DX7 (1983)", kind: "poly", voices: 16, level: 0.45,
   about: "Six sine operators in all 32 DX7 algorithms. Each operator has ratio or fixed frequency (coarse, fine, detune), output level, its own four-rate / four-level envelope, velocity sensitivity and amplitude-modulation sensitivity; feedback follows each algorithm's loop. The LFO has six waves, delay, pitch and amplitude depth and key sync; the pitch envelope bends every operator. Values use the DX7's 0-99 scales. Keyboard level and rate scaling are not modelled.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new DxVoice(rate, i + 111),

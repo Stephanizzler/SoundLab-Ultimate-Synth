@@ -259,3 +259,49 @@ select { max-width: 100%; text-overflow: ellipsis; }
 }
 
 .badge { font-size: 11px; font-weight: 700; color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 50%, var(--line)); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+
+/* ---------------- Faceplates (colours per machine come from faces.ts) ---------------- */
+.uhead .swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+.face { background: var(--fp-bg); color: var(--fp-text); font-family: var(--fp-font, inherit); border-radius: 0 0 var(--r-control) var(--r-control); padding: 12px 16px 16px; }
+/* End cheeks: wood or metal strips drawn on both sides, over the panel colour. */
+.face[class*="cheeks-"] { background: var(--cheek) left top / 18px 100% no-repeat, var(--cheek) right top / 18px 100% no-repeat, var(--fp-bg); padding-left: 34px; padding-right: 34px; }
+.face.cheeks-walnut { --cheek: repeating-linear-gradient(176deg, #4a2c17 0 7px, #5d3a1f 7px 11px, #3d2413 11px 16px, #6a4426 16px 19px); }
+.face.cheeks-oak { --cheek: repeating-linear-gradient(177deg, #9b6b3d 0 6px, #b07d4a 6px 10px, #8a5d33 10px 15px); }
+.face.cheeks-rosewood { --cheek: repeating-linear-gradient(175deg, #3a1a14 0 6px, #4d241b 6px 11px, #2e140f 11px 15px); }
+.face.cheeks-light-wood { --cheek: repeating-linear-gradient(176deg, #c9a273 0 7px, #d8b386 7px 11px, #b98f5f 11px 16px); }
+.face.cheeks-metal { --cheek: linear-gradient(90deg, #6d737b, #b8bec6 45%, #7a8089); }
+.face .plate { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--fp-line); }
+.face .brandbox { display: flex; flex-direction: column; min-width: 0; }
+.face .brand { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; color: var(--fp-text); line-height: 1.1; }
+.face .tag { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--fp-label); }
+.face.plate-italic .brand { font-style: italic; font-weight: 700; letter-spacing: 0; }
+.face.plate-wide .brand { text-transform: uppercase; letter-spacing: 3px; font-weight: 700; }
+.face.plate-mono .brand { font-family: "Courier New", ui-monospace, monospace; font-weight: 700; letter-spacing: 1px; }
+.face.plate-stencil .brand { text-transform: uppercase; letter-spacing: 5px; font-weight: 900; }
+.face.plate-script .brand { font-family: "Snell Roundhand", "Brush Script MT", "Segoe Script", cursive; font-weight: 400; font-size: 26px; letter-spacing: 0; }
+.face .lcd { display: grid; font-family: "Courier New", ui-monospace, monospace; font-size: 13px; line-height: 16px; letter-spacing: 1px; color: #1a2a12; background: linear-gradient(180deg, #a9c47a, #8fb05f); border: 3px solid #0d0d0d; border-radius: 4px; padding: 4px 8px; min-width: 190px; box-shadow: inset 0 0 8px #0005; white-space: pre; }
+.face .about { color: var(--fp-label); }
+.face .about strong { color: var(--fp-text); }
+.face fieldset.grp { background: color-mix(in srgb, var(--fp-text) 4%, transparent); border: 1px solid var(--fp-line); border-top: 3px solid var(--stripe, var(--fp-line)); border-radius: 4px; }
+.face fieldset.grp legend { color: var(--stripe, var(--fp-label)); }
+.face .ctl .ctl-name { color: var(--fp-label); }
+.face .ctl output { color: var(--fp-text); }
+.face .k-track { stroke: var(--fp-track); }
+.face .k-val { stroke: var(--fp-arc); }
+.face .k-cap { fill: var(--fp-cap); stroke: var(--fp-skirt); stroke-width: 2.5; }
+.face .k-ptr { stroke: var(--fp-ptr); stroke-width: 2.2; }
+.face .toggle, .face select { background: var(--fp-btn); color: var(--fp-btn-text); border-color: var(--fp-line); }
+.face .toggle[aria-pressed="true"] { background: var(--stripe, var(--fp-on)); color: var(--fp-on-text); border-color: var(--stripe, var(--fp-on)); box-shadow: 0 0 6px color-mix(in srgb, var(--stripe, var(--fp-on)) 60%, transparent); }
+/* Light panels (the bass line and the 909) use a dark stripe colour for text where needed. */
+.face fieldset.grp.sl { background: var(--panel); border: 1px solid var(--line); border-top: 1px solid var(--line); font-family: system-ui, sans-serif; }
+.face fieldset.grp.sl legend { color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+.face .sl .ctl-name { color: var(--muted); }
+.face .sl .ctl output { color: var(--text); }
+.face .sl .k-track { stroke: var(--line); } .face .sl .k-val { stroke: var(--accent); } .face .sl .k-cap { fill: var(--raised); stroke: transparent; } .face .sl .k-ptr { stroke: var(--text); }
+.face .sl select, .face .sl .toggle { background: var(--raised); color: var(--text); border-color: var(--line); }
+.k-cap { fill: var(--raised); stroke: transparent; }
+@media (max-width: 560px) {
+  .face { padding: 10px 10px 12px; }
+  .face[class*="cheeks-"] { background-size: 8px 100%, 8px 100%, auto; padding-left: 16px; padding-right: 16px; }
+  .face .lcd { min-width: 0; width: 100%; }
+}

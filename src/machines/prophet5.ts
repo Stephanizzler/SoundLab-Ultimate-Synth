@@ -71,7 +71,7 @@ class P5Voice extends Voice {
 }
 
 export const prophet5: MachineDef = {
-  id: "studio-poly", name: "Studio Poly", inspiredBy: "Sequential Prophet-5 (1978)", kind: "poly", voices: 5, level: 0.96,
+  id: "studio-poly", name: "Profit-5", inspiredBy: "Sequential Prophet-5 (1978)", kind: "poly", voices: 5, level: 0.96,
   about: "Five voices of two oscillators (A: saw and pulse with sync; B: saw, triangle and pulse, with Lo-freq and keyboard-off for use as a modulator), a mixer with noise and the CEM-style 4-pole filter. Poly-Mod sends the filter envelope and oscillator B to freq A, pulse width A and the filter; Wheel-Mod sends the LFO (saw, triangle, square, combinable) or noise to the oscillators and filter. Unison stacks all five voices.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new P5Voice(rate, i + 11),

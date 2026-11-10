@@ -69,7 +69,7 @@ class JupVoice extends Voice {
 }
 
 export const jupiter8: MachineDef = {
-  id: "flagship-poly", name: "Flagship Poly", inspiredBy: "Roland Jupiter-8 (1981)", kind: "poly", voices: 8, level: 1.21,
+  id: "flagship-poly", name: "Juniper-8", inspiredBy: "Roland Jupiter-8 (1981)", kind: "poly", voices: 8, level: 1.21,
   about: "Eight voices. VCO-1 (triangle, saw, pulse, square; cross-modulated by VCO-2) and VCO-2 (sine, saw, pulse, noise; syncable, with a low range), PWM from the LFO, by hand or from ENV-1, a VCO modulator, a high-pass, the IR3109-style 4-pole filter switchable to 12 dB, two ADSRs with key follow (ENV-1 invertible), the delayed LFO with four waves, solo/unison/poly assign and the arpeggio.",
   params, glideParam: "glide",
   createVoice: (rate, i) => new JupVoice(rate, i + 31),

@@ -188,7 +188,7 @@ class DrumVoice extends Voice {
 
 const kitList = (k: Kit) => Object.entries(k).map(([note, d]) => ({ note: Number(note), name: d.name }));
 export const tr808: MachineDef = {
-  id: "boom-kit", name: "Boom Kit", inspiredBy: "Roland TR-808 Rhythm Composer (1980)", kind: "drum", voices: 16, level: 2.0,
+  id: "boom-kit", name: "T-Rex 808", inspiredBy: "Roland TR-808 Rhythm Composer (1980)", kind: "drum", voices: 16, level: 2.0,
   about: "All sixteen instruments and the front panel: bass drum (level, tone, decay, and its internal tuning trimmer), snare (tone, snappy), low, mid and high toms and congas (sharing level and tuning, as the 808's switches did), rim shot and claves, hand clap and maracas, cowbell, cymbal (tone, decay), open hihat (decay) and closed hihat, plus accent. Six square-wave metal oscillators make the hats, cymbal and cowbell; the closed hat chokes the open one.",
   params: P808,
   createVoice: (rate, i) => new DrumVoice(rate, i + 141, false),
@@ -201,7 +201,7 @@ export const tr808: MachineDef = {
   ],
 };
 export const tr909: MachineDef = {
-  id: "punch-kit", name: "Punch Kit", inspiredBy: "Roland TR-909 Rhythm Composer (1984)", kind: "drum", voices: 16, level: 1.49,
+  id: "punch-kit", name: "T-Rex 909", inspiredBy: "Roland TR-909 Rhythm Composer (1984)", kind: "drum", voices: 16, level: 1.49,
   about: "Every 909 instrument and knob: bass drum (tune, level, attack, decay), snare (tune, level, tone, snappy), three toms (tune, level, decay), rim shot, hand clap, closed and open hihat (level, decay), crash and ride (level, tune) and total accent. The analog voices follow the 909's circuits; its hats and cymbals were samples, so here they are synthesised from metal oscillators and noise: close in role, not identical.",
   params: P909,
   createVoice: (rate, i) => new DrumVoice(rate, i + 151, true),
