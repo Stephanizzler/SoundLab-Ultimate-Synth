@@ -2,7 +2,7 @@
 // bay and the shared effects. The same code runs live in an AudioWorklet and
 // offline for exports and tests, so a render sounds like what you heard.
 import { machineById } from "../machines/index.ts";
-import { fromNorm, toNorm, type MachineDef, type ParamDef, type SlotFx, type Voice, type VoiceCtx } from "./machine.ts";
+import { ARP_RATES, fromNorm, toNorm, type MachineDef, type ParamDef, type SlotFx, type Voice, type VoiceCtx } from "./machine.ts";
 import {
   CHORDS, DELAY_TIMES, DIVISIONS, FX_PARAMS, LFO_RATES, MOD_PARAMS, SLOTS, TRACKS, TRACK_OUTPUTS, slotParamDefs,
   type SynthState, type Track,
@@ -32,65 +32,158 @@ class Unit {
 
 export type NoteFlags = { slide?: boolean; accent?: boolean };
 
-class Slot extends Unit {
-  voices: Voice[]; fx: SlotFx | null; held: number[] = []; counter = 0;
-  L = new Float32Array(BLOCK); R = new Float32Array(BLOCK); mono = new Float32Array(BLOCK);
-  peak = 0; mute = false; solo = false; iLevel: number; iPan: number; iDelay: number; iReverb: number; iGlide: number;
+// One rack slot: a machine's voices, how notes are assigned to them (poly,
+// unison, mono, drums), the part settings (channel, key range, transpose)
+// and the arpeggiator for machines that had one.
+export class Slot extends Unit {
+  voices: Voice[]; fx: SlotFx | null; counter = 0;
+  L = new Float32Array(BLOCK); R = new Float32Array(BLOCK); vbuf = new Float32Array(BLOCK);
+  peak = 0; mute = false; solo = false;
+  held: number[] = []; // mono/unison note stack (played notes, last = sounding)
+  sounding = new Map<number, number>(); // incoming note -> transposed note
+  // Arpeggiator.
+  arpHeld: { note: number; vel: number }[] = []; arpNote = -1; arpNext = -1; arpOff = -1; arpIdx = 0; arpClock = 0; arpRng = new Rng(99);
   readonly def: MachineDef;
   readonly rate: number;
+  i: Record<string, number>;
   constructor(def: MachineDef, values: Record<string, number>, rate: number) {
     super(slotParamDefs(def.id), values);
     this.def = def; this.rate = rate;
     this.voices = Array.from({ length: def.voices }, (_, i) => def.createVoice(rate, i));
     this.fx = def.createFx?.(rate) ?? null;
-    this.iLevel = this.index("level"); this.iPan = this.index("pan"); this.iDelay = this.index("delay"); this.iReverb = this.index("reverb");
-    this.iGlide = def.glideParam ? this.index(def.glideParam) : -1;
+    this.i = Object.fromEntries(["level", "pan", "delay", "reverb", "channel", "keyLo", "keyHi", "transpose", "assign", "uniVoices", "uniDetune", "spread", "arp", "arpRange", "arpRate"].map((k) => [k, this.index(k)]));
+    this.i.glide = def.glideParam ? this.index(def.glideParam) : -1;
   }
+  get iLevel() { return this.i.level; }
+  get iDelay() { return this.i.delay; }
+  get iReverb() { return this.i.reverb; }
+  p(k: string, def = 0) { const i = this.i[k]; return i >= 0 ? this.eff[i] : def; }
+  mode(): "poly" | "unison" | "mono" | "drum" {
+    if (this.def.kind !== "poly") return this.def.kind;
+    return (["poly", "unison", "mono"] as const)[Math.round(this.p("assign"))] ?? "poly";
+  }
+  listensOn(channel: number) { const c = Math.round(this.p("channel")); return c === 0 || c === channel + 1; }
+  arpOn() { return this.def.kind !== "drum" && Math.round(this.p("arp")) > 0; }
+  glideOn() { return this.i.glide >= 0 && this.eff[this.i.glide] > 0.001; }
+
   noteOn(note: number, vel: number, f: NoteFlags = {}) {
-    const accent = !!f.accent;
-    if (this.def.kind === "mono") {
-      const v = this.voices[0];
-      const legato = this.held.length > 0 && v.gateOn && (this.def.id !== "acid-bass" || !!f.slide);
-      const glide = this.def.id === "acid-bass" ? legato : this.iGlide >= 0 && this.eff[this.iGlide] > 0.001;
-      this.held = this.held.filter((n) => n !== note); this.held.push(note);
-      v.start(note, vel, accent, legato, glide);
-      v.started = ++this.counter;
+    if (note < this.p("keyLo", 0) || note > this.p("keyHi", 127)) return;
+    const n = Math.max(0, Math.min(127, note + Math.round(this.p("transpose"))));
+    if (this.sounding.has(note)) this.noteOff(note);
+    this.sounding.set(note, n);
+    if (this.arpOn()) { this.arpHeld.push({ note: n, vel }); return; }
+    this.play(n, vel, f);
+  }
+  noteOff(note: number) {
+    const n = this.sounding.get(note);
+    if (n === undefined) return;
+    this.sounding.delete(note);
+    const k = this.arpHeld.findIndex((x) => x.note === n);
+    if (k >= 0) { this.arpHeld.splice(k, 1); return; }
+    this.unplay(n);
+  }
+  // Starts a (transposed) note on the voices.
+  play(n: number, vel: number, f: NoteFlags = {}) {
+    const mode = this.mode(), accent = !!f.accent;
+    if (mode === "mono" || mode === "unison") {
+      const vs = this.stack(mode);
+      const lead = vs[0];
+      const legato = this.held.length > 0 && lead.gateOn && (!this.def.slideOnly || !!f.slide);
+      const glide = this.def.slideOnly ? legato : this.glideOn();
+      this.held = this.held.filter((x) => x !== n); this.held.push(n);
+      const target = this.monoTarget();
+      if (legato && lead.note === target) return; // low-note priority: a higher key doesn't take over
+      this.layout(vs);
+      for (const v of vs) { v.start(target, vel, accent, legato, glide); v.started = ++this.counter; }
       return;
     }
-    if (this.def.kind === "drum") for (const v of this.voices) if (v.active) v.choke(note);
-    let v = this.voices.find((x) => x.note === note && x.gateOn && this.def.kind !== "drum");
+    if (mode === "drum") for (const v of this.voices) if (v.active) v.choke(n);
+    let v = mode === "drum" ? undefined : this.voices.find((x) => x.note === n && x.gateOn);
     v ??= this.voices.find((x) => !x.active);
     v ??= this.voices.filter((x) => !x.gateOn).sort((a, b) => a.started - b.started)[0];
     v ??= [...this.voices].sort((a, b) => a.started - b.started)[0];
-    v.start(note, vel, accent, false, false);
+    // Poly voices sit across the stereo field when the machine has a spread control (OB-Xa pan pots).
+    v.detune = 0; v.pan = this.i.spread >= 0 && mode === "poly" ? this.p("spread") * (((this.voices.indexOf(v) * 0.618) % 1) * 2 - 1) : 0;
+    v.start(n, vel, accent, false, mode !== "drum" && this.glideOn());
     v.started = ++this.counter;
   }
-  noteOff(note: number) {
-    if (this.def.kind === "mono") {
-      const was = this.held[this.held.length - 1];
-      this.held = this.held.filter((n) => n !== note);
-      const v = this.voices[0];
-      if (!this.held.length) { if (v.note === note || was === note) v.stop(); }
-      else if (was === note) v.start(this.held[this.held.length - 1], v.vel, false, true, this.iGlide >= 0 && this.eff[this.iGlide] > 0.001);
+  unplay(n: number) {
+    const mode = this.mode();
+    if (mode === "mono" || mode === "unison") {
+      const vs = this.stack(mode);
+      const was = vs[0].note;
+      this.held = this.held.filter((x) => x !== n);
+      if (!this.held.length) for (const v of vs) v.stop();
+      else if (was === n) { const t = this.monoTarget(); for (const v of vs) v.start(t, v.vel, false, true, this.glideOn()); }
       return;
     }
-    if (this.def.kind === "drum") return; // drums play out their own length
-    for (const v of this.voices) if (v.note === note && v.gateOn) v.stop();
+    if (mode === "drum") return; // drums play out their own length
+    for (const v of this.voices) if (v.note === n && v.gateOn) v.stop();
+  }
+  // The voices a mono or unison note uses.
+  stack(mode: string) { return mode === "mono" ? [this.voices[0]] : this.voices.slice(0, Math.max(2, Math.min(this.voices.length, Math.round(this.p("uniVoices", 4))))); }
+  monoTarget() { return this.def.priority === "low" ? Math.min(...this.held) : this.held[this.held.length - 1]; }
+  // Unison: spread the stack evenly in pitch and across the stereo field.
+  layout(vs: Voice[]) {
+    if (vs.length === 1) { vs[0].detune = 0; vs[0].pan = 0; return; }
+    const det = this.p("uniDetune") / 100, spread = this.p("spread");
+    vs.forEach((v, k) => { const pos = (k / (vs.length - 1)) * 2 - 1; v.detune = pos * det; v.pan = pos * spread; });
   }
   allOff(hard = false) {
-    this.held = [];
-    for (const v of this.voices) { v.stop(); if (hard) { v.note = -1; } }
+    this.held = []; this.sounding.clear(); this.arpHeld = []; this.arpNote = -1; this.arpNext = -1;
+    for (const v of this.voices) v.stop();
     if (hard) this.voices = Array.from({ length: this.def.voices }, (_, i) => this.def.createVoice(this.rate, i));
   }
+  // The arpeggiator steps on the transport's beat when it plays, or on its own clock.
+  arpTick(beats: number, transportBeat: number | null) {
+    if (!this.arpOn()) {
+      if (this.arpNote >= 0) { this.unplay(this.arpNote); this.arpNote = -1; }
+      if (this.arpHeld.length) { for (const h of this.arpHeld) this.play(h.note, h.vel); this.arpHeld = []; }
+      return;
+    }
+    const now = transportBeat ?? this.arpClock, end = now + beats;
+    this.arpClock += beats;
+    if (this.arpOff >= 0 && this.arpOff < end && this.arpNote >= 0) { this.unplay(this.arpNote); this.arpNote = -1; this.arpOff = -1; }
+    if (!this.arpHeld.length) { this.arpNext = -1; this.arpIdx = 0; return; }
+    const step = ARP_RATES[Math.round(this.p("arpRate"))]?.beats ?? 0.25;
+    if (this.arpNext < 0 || this.arpNext > end + step || this.arpNext < now - step) this.arpNext = transportBeat !== null ? Math.ceil(now / step - 1e-9) * step : now;
+    while (this.arpNext < end) {
+      if (this.arpNote >= 0) this.unplay(this.arpNote);
+      const seq = this.arpSequence();
+      const pick = seq[this.arpIdx % seq.length];
+      this.arpIdx++;
+      this.play(pick.note, pick.vel);
+      this.arpNote = pick.note; this.arpOff = this.arpNext + step * 0.5; this.arpNext += step;
+    }
+  }
+  arpSequence() {
+    const mode = Math.round(this.p("arp")), oct = Math.round(this.p("arpRange")) + 1;
+    const base = mode === 5 ? this.arpHeld.slice() : this.arpHeld.slice().sort((a, b) => a.note - b.note);
+    const up: { note: number; vel: number }[] = [];
+    for (let o = 0; o < oct; o++) for (const h of base) if (h.note + 12 * o <= 127) up.push({ note: h.note + 12 * o, vel: h.vel });
+    if (mode === 2) return up.reverse();
+    if (mode === 3) return up.length > 1 ? [...up, ...up.slice(1, -1).reverse()] : up;
+    if (mode === 4) { const k = Math.floor(this.arpRng.next() * up.length); return [up[k]]; }
+    return up;
+  }
   render(n: number, ctx: VoiceCtx) {
-    this.mono.fill(0, 0, n);
-    for (const v of this.voices) if (v.active) v.render(this.mono, n, this.eff, ctx);
-    const g = dbToGain(this.eff[this.iLevel]) * this.def.level * (this.eff[this.iLevel] <= -47.9 ? 0 : 1);
-    const pan = this.eff[this.iPan], gl = g * Math.cos((pan + 1) * Math.PI / 4) * Math.SQRT2, gr = g * Math.sin((pan + 1) * Math.PI / 4) * Math.SQRT2;
-    let peak = 0;
-    for (let i = 0; i < n; i++) { const x = this.mono[i]; this.L[i] = x * gl; this.R[i] = x * gr; }
+    this.L.fill(0, 0, n); this.R.fill(0, 0, n);
+    // A unison stack starts in phase, so scale it a little harder than 1/sqrt(n).
+    const uni = this.mode() === "unison" ? 1.2 * this.stack("unison").length ** -0.75 : 1;
+    for (const v of this.voices) {
+      if (!v.active) continue;
+      this.vbuf.fill(0, 0, n);
+      v.render(this.vbuf, n, this.eff, ctx);
+      const a = ((v.pan + 1) * Math.PI) / 4, gl = Math.cos(a) * Math.SQRT2 * uni, gr = Math.sin(a) * Math.SQRT2 * uni;
+      for (let k = 0; k < n; k++) { const x = this.vbuf[k]; this.L[k] += x * gl; this.R[k] += x * gr; }
+    }
+    const lv = this.eff[this.i.level];
+    const g = lv <= -47.9 ? 0 : dbToGain(lv) * this.def.level;
+    const pan = this.eff[this.i.pan], gl = g * Math.cos((pan + 1) * Math.PI / 4) * Math.SQRT2, gr = g * Math.sin((pan + 1) * Math.PI / 4) * Math.SQRT2;
+    for (let k = 0; k < n; k++) { this.L[k] *= gl; this.R[k] *= gr; }
     if (this.fx) this.fx.process(this.L, this.R, n, this.eff);
-    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(this.L[i]), Math.abs(this.R[i]));
+    let peak = 0;
+    for (let k = 0; k < n; k++) peak = Math.max(peak, Math.abs(this.L[k]), Math.abs(this.R[k]));
     this.peak = Math.max(peak, this.peak * 0.995);
   }
 }
@@ -121,7 +214,7 @@ export class Engine {
   readonly rate: number;
   constructor(rate: number, state: SynthState) { this.rate = rate;
     this.delay = new StereoDelay(rate); this.reverb = new Reverb(rate); this.master = new Master(rate);
-    this.ctx = { rate, bend: 0, wheel: 0, bpm: 120 };
+    this.ctx = { rate, bend: 0, wheel: 0, bpm: 120, press: 0 };
     this.setState(state);
   }
 
@@ -190,6 +283,12 @@ export class Engine {
   /* ---------------- Live input ---------------- */
   noteOn(slot: number, note: number, vel: number, f?: NoteFlags) { this.keyVel = vel; this.slots[slot]?.noteOn(note, vel, f); }
   noteOff(slot: number, note: number) { this.slots[slot]?.noteOff(note); }
+  // A note from a keyboard on a MIDI channel (0-15): every slot listening on
+  // that channel whose key range holds the note plays it (splits and layers).
+  midiNote(channel: number, note: number, vel: number, on: boolean) {
+    if (on) this.keyVel = vel;
+    for (const s of this.slots) if (s?.listensOn(channel)) { if (on) s.noteOn(note, vel); else s.noteOff(note); }
+  }
   panic() { for (const s of this.slots) s?.allOff(true); this.pending = []; this.tGate.fill(0); this.delay.l.clear(); this.delay.r.clear(); }
   play() {
     this.playing = true; this.beat = 0; this.counters.fill(0); this.pending = []; this.rng = new Rng(12345);
@@ -266,7 +365,7 @@ export class Engine {
   }
   private block(n: number) {
     const bpm = this.state.bpm, beats = (n / this.rate) * (bpm / 60);
-    this.ctx.bpm = bpm; this.ctx.wheel = this.wheel;
+    this.ctx.bpm = bpm; this.ctx.wheel = this.wheel; this.ctx.press = this.press;
     if (this.playing) this.advanceSequencer(beats); else this.runPending(Infinity);
     // CV lanes glide for 5 ms so stepped values don't click.
     const cvc = 1 - Math.exp(-n / (0.005 * this.rate));
@@ -287,6 +386,7 @@ export class Engine {
     this.slots.forEach((s, i) => {
       if (!s) return;
       s.apply();
+      s.arpTick(beats, this.playing ? this.beat - beats : null);
       s.render(n, this.ctx);
       const audible = this.soloOnly >= 0 ? this.soloOnly === i : !s.mute && (!anySolo || s.solo);
       if (!audible) return;

@@ -29,6 +29,7 @@ for (const m of MACHINES) {
   assert.ok(m.presets.length >= 3, `${m.name} has presets`);
   for (const pr of m.presets) for (const k of Object.keys(pr.values)) assert.ok(m.params.some((d) => d.id === k), `${m.name} preset ${pr.name} sets unknown ${k}`);
   for (const d of m.params) assert.ok(d.def >= d.min && d.def <= d.max && (!d.options || d.options.length === d.max - d.min + 1), `${m.name} ${d.id} range`);
+  for (const d of m.params) assert.ok(d.group && !["Slot output", "Part"].includes(d.group), `${m.name} ${d.id} sits in its own panel section`);
 
   // Every preset plays, is finite and sensibly loud, at 44.1, 48 and 96 kHz.
   for (const [pi, pr] of m.presets.entries()) {
@@ -50,7 +51,7 @@ for (const m of MACHINES) {
   // In tune: the fundamental is A at some octave (oscillator ranges differ), within 1.5%.
   if (m.kind !== "drum" && m.id !== "west-coast") {
     const rate = 48000;
-    const tuned = { "ladder-mono": { w1: 2, w2: 2, w3: 2, t2: 0, t3: 0, o3: 1, drift: 0, cutoff: 8000, emph: 0 }, "studio-poly": { vintage: 0, bFine: 0 }, "multimode-poly": { drift: 0, detune: 0 }, "flagship-poly": { drift: 0, t2: 0 }, "scream-mono": { t2: 0, w1: 1, w2: 0, o2: 1 }, "expressive-poly": { detune: 0, vib: 0 }, "wave-scanner": { fine2: 0 }, "fm-six": { detune: 0, alg: 7, r2: 2, r3: 3, r4: 1, r5: 1, r6: 1 }, "super-va": { spread: 0, density: 1 } }[m.id] ?? {};
+    const tuned = { "ladder-mono": { w1: 2, w2: 2, w3: 2, f2: 0, f3: 0, r3: 2, drift: 0, cutoff: 8000, emph: 0 }, "studio-poly": { vintage: 0, bFine: 0 }, "multimode-poly": { drift: 0, detune: 0 }, "flagship-poly": { drift: 0, t2: 0 }, "scream-mono": { t2: 0, w1: 1, w2: 0, s2: 1 }, "expressive-poly": { detune: 0, subVco: 0 }, "wave-scanner": { bDetune: 0 }, "fm-six": { o1Det: 0, o1L2: 99, o1L3: 99, o2Lvl: 0, o3Lvl: 0, o4Lvl: 0, o5Lvl: 0, o6Lvl: 0, alg: 31 }, "super-va": { hsSpread: 0, o2Detune: 0 } }[m.id] ?? {};
     const { L } = play(solo(m.id, tuned, rate), [57], 0.5, 0.05);
     const hz = pitchOf(L, rate, rate * 0.25, 4000, 50, 1800);
     const oct = Math.log2(hz / 220);
@@ -74,14 +75,19 @@ for (const m of MACHINES) {
   const e = solo("studio-poly");
   for (let n = 40; n < 60; n++) e.noteOn(0, n, 0.8);
   const notes = e.slots[0].voices.map((v) => v.note);
-  assert.ok(notes.includes(59) && notes.includes(52) && !notes.includes(40), "oldest notes are stolen first");
+  assert.equal(e.slots[0].voices.length, 5, "the Prophet-5 has five voices");
+  assert.ok(notes.includes(59) && notes.includes(55) && !notes.includes(54), "oldest notes are stolen first");
 }
 // Mono machines go back to the held note (last-note priority) and only the 303 slides on demand.
 {
   const e = solo("ladder-mono"); const v = e.slots[0].voices[0];
-  e.noteOn(0, 48, 0.8); e.noteOn(0, 55, 0.8); assert.equal(v.target, 55);
-  e.noteOff(0, 55); assert.equal(v.target, 48, "returns to the held note"); assert.ok(v.gateOn);
-  e.noteOff(0, 48); assert.ok(!v.gateOn);
+  e.noteOn(0, 48, 0.8); e.noteOn(0, 55, 0.8); assert.equal(v.target, 48, "Minimoog: low-note priority keeps the lower key");
+  e.noteOn(0, 43, 0.8); assert.equal(v.target, 43, "a lower key takes over");
+  e.noteOff(0, 43); assert.equal(v.target, 48, "returns to the lowest held key"); assert.ok(v.gateOn);
+  e.noteOff(0, 48); e.noteOff(0, 55); assert.ok(!v.gateOn);
+  const j = solo("lead-va", { assign: 2 }); const jv = j.slots[0].voices[0];
+  j.noteOn(0, 48, 0.8); j.noteOn(0, 55, 0.8); assert.equal(jv.target, 55, "last-note priority elsewhere");
+  j.noteOff(0, 55); assert.equal(jv.target, 48, "returns to the held note");
   const a = solo("acid-bass"); const av = a.slots[0].voices[0];
   a.noteOn(0, 45, 0.8); const L = new Float32Array(480), R = new Float32Array(480); a.process(L, R, 480);
   av.fenv = 0.1; a.noteOn(0, 57, 0.8, { slide: true });

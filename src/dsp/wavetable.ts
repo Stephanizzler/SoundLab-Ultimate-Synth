@@ -7,7 +7,7 @@ const SIZE = 1024; // samples per cycle
 const FRAMES = 32; // waves per table
 const LEVELS = 9; // octave copies: up to 512, 256 ... 2 harmonics
 
-export const WAVETABLES = ["Resonant", "Harmonic morph", "Vocal", "Sync sweep", "Pulse width", "Bit crush"] as const;
+export const WAVETABLES = ["Resonant", "Harmonic morph", "Vocal", "Sync sweep", "Pulse width", "Bit crush", "Upper waves", "Organ drawbars", "Bell partials", "Saw build-up", "Formant sweep", "Clav comb", "Metallic", "Digital chaos"] as const;
 
 // One cycle of each table's wave at frame position t (0..1), phase p (0..1).
 function shape(bank: number, t: number, p: number): number {
@@ -33,10 +33,41 @@ function shape(bank: number, t: number, p: number): number {
     }
     case 3: { const r = 1 + t * 7; const q = p * r; return 1 - 2 * (q - Math.floor(q)); }
     case 4: return p < 0.5 - t * 0.47 ? 1 : -1;
-    default: {
+    case 5: {
       const steps = Math.round(64 - t * 61);
       const x = 0.6 * Math.sin(TAU * p) + 0.4 * (1 - 2 * p);
       return Math.round(x * steps) / steps;
+    }
+    case 6: {
+      // The classic analog shapes in a row: sine, triangle, square, saw, narrow pulse.
+      const W = [Math.sin(TAU * p), 1 - 4 * Math.abs(p - 0.5), p < 0.5 ? 1 : -1, 1 - 2 * p, p < 0.12 ? 1 : -0.14];
+      const x = t * 4, i = Math.min(3, Math.floor(x)), f = x - i;
+      return W[i] * (1 - f) + W[i + 1] * f;
+    }
+    case 7: {
+      // Drawbar registrations, from flute to full organ.
+      const bars = [[0, 8, 0, 0, 0, 0, 0, 0, 0], [8, 8, 8, 0, 0, 0, 0, 0, 0], [8, 8, 8, 8, 0, 0, 0, 0, 0], [8, 6, 8, 8, 4, 0, 4, 0, 0], [8, 8, 8, 8, 8, 8, 8, 8, 8]];
+      const H = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 8];
+      const x = t * 4, i = Math.min(3, Math.floor(x)), f = x - i;
+      let y = 0;
+      for (let k = 0; k < 9; k++) { const a = (bars[i][k] * (1 - f) + bars[i + 1][k] * f) / 8; if (H[k] >= 1) y += a * Math.sin(TAU * H[k] * p); else y += a * Math.sin(TAU * p) * 0.5; }
+      return y / 3;
+    }
+    case 8: {
+      const partials = [1, 2, 3, 4.2, 5.4, 6.8, 8.9, 11];
+      let y = 0;
+      partials.forEach((h, k) => { const hh = Math.round(h * (1 + t * 0.6)); y += Math.sin(TAU * hh * p) / (k + 1) ** (1.2 - t * 0.8); });
+      return y / 2;
+    }
+    case 9: { const nH = 1 + Math.floor(t * 40); let y = 0; for (let h = 1; h <= nH; h++) y += Math.sin(TAU * h * p) / h; return y * 0.6; }
+    case 10: { let y = 0; const peak = 1 + t * 30; for (let h = 1; h <= 48; h++) y += Math.sin(TAU * h * p) * Math.exp(-(((h - peak) / 2.5) ** 2)) * 1.5 + Math.sin(TAU * h * p) * 0.05 / h; return y; }
+    case 11: { const w = 0.05 + t * 0.45; return (p < w ? 1 : -1) - (((p + 0.5) % 1) < w ? 1 : -1) * 0.7; }
+    case 12: { let y = 0; for (let h = 1; h <= 40; h++) if ((h * 7 + Math.round(t * 13)) % 5 < 2) y += Math.sin(TAU * h * p + h * t * 3) / Math.sqrt(h); return y * 0.5; }
+    default: {
+      // Deterministic pseudo-random harmonic mixes, changing frame to frame.
+      let y = 0, seed = 1 + Math.floor(t * 31) * 7919;
+      for (let h = 1; h <= 24; h++) { seed = (seed * 16807) % 2147483647; y += Math.sin(TAU * h * p) * ((seed / 2147483647) * 2 - 1) / Math.sqrt(h); }
+      return y * 0.6;
     }
   }
 }

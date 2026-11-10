@@ -1,10 +1,10 @@
 import { color } from "../core/design.ts";
 import { readBundle, writeBundle, problems, owner, BUNDLE_MIME, type Project, type Loudness } from "../core/index.ts";
 import { MACHINES, machineById, drumName } from "../machines/index.ts";
-import { MIXER_PARAMS, type ParamDef } from "../engine/machine.ts";
+import { MIXER_PARAMS, formatParam, type ParamDef } from "../engine/machine.ts";
 import {
   CHORDS, DIVISIONS, FX_PARAMS, MOD_PARAMS, PATTERNS, SLOTS, TRACKS, MAX_STEPS, TRACK_OUTPUTS,
-  compactState, demoState, destinations, emptyStep, emptyTrack, sanitizeState, slotParamDefs, slotState, sources,
+  PERFORMANCES, compactState, demoState, destinations, emptyStep, emptyTrack, performanceSlots, sanitizeState, slotParamDefs, slotState, sources,
   type SynthState, type Step, type Track,
 } from "../engine/state.ts";
 import { APP_ID, describe, midiToTrack, patternToMidi, saveRender, stateFromVersion } from "../engine/projectio.ts";
@@ -162,14 +162,14 @@ function slotUnit(i: number) {
   mute.addEventListener("click", () => { s.mute = !s.mute; commit(); renderRack(); });
   const solo = h("button", { class: "mini solo", "aria-pressed": String(s.solo), title: "Solo", disabled: !m }, "S");
   solo.addEventListener("click", () => { s.solo = !s.solo; commit(); renderRack(); });
-  const playHere = h("button", { class: "mini", "aria-pressed": String(ui.slot === i), title: "Play this slot from the keyboard", disabled: !m }, "♪");
-  playHere.addEventListener("click", () => { ui.slot = i; ui.open.add(i); renderRack(); renderKeys(); });
+  const playHere = h("button", { class: "mini", "aria-pressed": String(play.target === "slot" && ui.slot === i), title: "Play this slot from the keyboard", disabled: !m }, "♪");
+  playHere.addEventListener("click", () => { ui.slot = i; play.target = "slot"; ui.open.add(i); renderRack(); renderKeys(); });
   const toggle = h("button", { class: "mini", "aria-expanded": String(open), title: open ? "Close panel" : "Open panel", disabled: !m }, open ? "▾" : "▸");
   toggle.addEventListener("click", () => { if (ui.open.has(i)) ui.open.delete(i); else ui.open.add(i); renderRack(); });
   const machineSel = select(machineOptions, s.machine, (v) => changeMachine(i, v), `Slot ${i + 1} machine`); machineSel.classList.add("machine");
   const presetSel = m ? select(m.presets.map((p) => ({ value: p.name, label: p.name })).concat(m.presets.some((p) => p.name === s.preset) ? [] : [{ value: s.preset, label: s.preset || "Custom" }]), s.preset, (v) => applyPreset(i, v), `Slot ${i + 1} preset`) : null;
   presetSel?.classList.add("preset");
-  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), machineSel, presetSel, mute, solo, playHere, toggle);
+  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), machineSel, presetSel, m ? partBadge(s.params) : null, mute, solo, playHere, toggle);
   const unit = h("div", { class: `unit ${ui.slot === i ? "sel" : ""}`, id: `slot${i}` }, head);
   if (open && m) {
     unit.append(h("div", { class: "ubody" },
@@ -177,6 +177,22 @@ function slotUnit(i: number) {
       controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], s.params)));
   }
   return unit;
+}
+// A short note of a slot's part settings when they differ from "every key, any channel".
+function partBadge(p: Record<string, number>) {
+  const def = (id: string) => MIXER_PARAMS.find((d) => d.id === id)!;
+  const bits = [Math.round(p.channel) ? `Ch ${Math.round(p.channel)}` : "", p.keyLo > 0 && p.keyHi < 127 ? `${formatParam(def("keyLo"), p.keyLo)}–${formatParam(def("keyHi"), p.keyHi)}` : p.keyLo > 0 ? `${formatParam(def("keyLo"), p.keyLo)} and up` : p.keyHi < 127 ? `up to ${formatParam(def("keyHi"), p.keyHi)}` : "", p.transpose ? `${p.transpose > 0 ? "+" : ""}${p.transpose} st` : ""].filter(Boolean);
+  return bits.length ? h("span", { class: "badge", title: "MIDI channel, key range and transpose (Part section)" }, bits.join(" · ")) : null;
+}
+function loadPerformance(name: string) {
+  const slots = performanceSlots(name);
+  if (!slots) return;
+  state.slots = slots;
+  const valid = new Set(destinations(state).map((d) => d.id));
+  state.cables = state.cables.filter((c) => valid.has(c.dst));
+  ui.slot = 0; ui.open = new Set([0]); play.target = "rack";
+  commit(); renderAll();
+  status(`Loaded the performance "${name}". The keyboard now plays the whole rack by MIDI channel.`);
 }
 function changeMachine(i: number, id: string) {
   state.slots[i] = slotState(id);
@@ -197,6 +213,10 @@ function applyPreset(i: number, name: string) {
 function renderRack() {
   knobRegistry.clear();
   const rack = $("rack"); rack.replaceChildren();
+  const perf = select([{ value: "", label: "Load a performance (split / layer / multi)…" }, ...PERFORMANCES.map((p) => ({ value: p.name, label: p.name }))], "", (v) => {
+    if (v && confirm(`${PERFORMANCES.find((p) => p.name === v)?.about}\n\nThis replaces the rack's slots (the patterns stay).`)) loadPerformance(v); else renderRack();
+  }, "Performance");
+  rack.append(h("div", { class: "row wrap", style: "margin:0 0 4px" }, perf, h("span", { class: "muted small" }, "Every slot is a part with its own MIDI channel, key range and transpose (open a slot: Part), so the rack splits and layers like a Jupiter-8, a Nord Lead or a Virus in Multi mode.")));
   state.slots.forEach((_, i) => rack.append(slotUnit(i)));
   const unitBox = (key: number, title: string, about: string, body: () => HTMLElement) => {
     const open = ui.open.has(key);
@@ -504,13 +524,29 @@ function renderPatch() {
 /* =========================================================================
    4 · Play: on-screen keys, computer keyboard, MIDI
    ========================================================================= */
-const play = { octave: 4, vel: 0.8, down: new Map<number, number>(), midi: null as MIDIAccess | null, input: "", channelMode: "selected" };
-function noteOn(note: number, vel = play.vel, slot = ui.slot) { void ensureAudio().then((ok) => { if (ok) send({ type: "note", slot, note, vel, on: true }); }); keyEl(note)?.classList.add("down"); }
-function noteOff(note: number, slot = ui.slot) { send({ type: "note", slot, note, vel: 0, on: false }); keyEl(note)?.classList.remove("down"); }
+// The keyboard plays either the selected slot, or the whole rack as MIDI
+// channel 1 (so key ranges and layers apply).
+const play = { octave: 4, vel: 0.8, down: new Map<number, number>(), midi: null as MIDIAccess | null, input: "", channelMode: "selected", target: "slot" as "slot" | "rack" };
+function noteOn(note: number, vel = play.vel, slot: number | null = null, channel = 0) {
+  void ensureAudio().then((ok) => {
+    if (!ok) return;
+    if (slot === null && play.target === "rack") send({ type: "midi", channel, note, vel, on: true });
+    else send({ type: "note", slot: slot ?? ui.slot, note, vel, on: true });
+  });
+  keyEl(note)?.classList.add("down");
+}
+function noteOff(note: number, slot: number | null = null, channel = 0) {
+  if (slot === null && play.target === "rack") send({ type: "midi", channel, note, vel: 0, on: false });
+  else send({ type: "note", slot: slot ?? ui.slot, note, vel: 0, on: false });
+  keyEl(note)?.classList.remove("down");
+}
 const keyEl = (n: number) => document.querySelector(`.kbd [data-note="${n}"]`);
 function renderKeys() {
   const root = $("keys"); root.replaceChildren();
-  const slotSel = select(state.slots.map((s, i) => ({ value: String(i), label: `${i + 1} · ${machineById(s.machine)?.name ?? "Empty"}` })), String(ui.slot), (v) => { ui.slot = Number(v); renderRack(); }, "Keyboard plays");
+  const slotSel = select([{ value: "rack", label: "Whole rack (MIDI channel 1: splits and layers)" }, ...state.slots.map((s, i) => ({ value: String(i), label: `${i + 1} · ${machineById(s.machine)?.name ?? "Empty"}` }))], play.target === "rack" ? "rack" : String(ui.slot), (v) => {
+    if (v === "rack") play.target = "rack"; else { play.target = "slot"; ui.slot = Number(v); }
+    renderRack();
+  }, "Keyboard plays");
   const oct = h("output", {}, `C${play.octave}`);
   const octBtn = (d: number, label: string) => { const b = h("button", { class: "button small", title: d < 0 ? "Octave down (Z)" : "Octave up (X)" }, label); b.addEventListener("click", () => { play.octave = Math.max(0, Math.min(8, play.octave + d)); renderKeys(); }); return b; };
   const vel = h("input", { type: "range", min: 0.05, max: 1, step: 0.01, value: String(play.vel), "aria-label": "Velocity" });
@@ -574,7 +610,7 @@ function midiControls() {
   if (!ins.length) { span.textContent = "no MIDI inputs found."; return span; }
   span.append(
     select([{ value: "", label: "All inputs" }, ...ins.map((i) => ({ value: i.id, label: i.name ?? i.id }))], play.input, (v) => { play.input = v; }, "MIDI input"), " ",
-    select([{ value: "selected", label: "Every channel plays the selected slot" }, { value: "slots", label: "Channel 1–8 plays slot 1–8" }], play.channelMode, (v) => { play.channelMode = v; }, "MIDI channels"));
+    select([{ value: "selected", label: "Follow the on-screen keyboard's choice" }, { value: "channels", label: "Multitimbral: each slot's MIDI channel" }], play.channelMode, (v) => { play.channelMode = v; }, "MIDI routing"));
   return span;
 }
 function hookMidi() {
@@ -582,10 +618,12 @@ function hookMidi() {
   for (const input of play.midi.inputs.values()) input.onmidimessage = (e: MIDIMessageEvent) => {
     if (play.input && input.id !== play.input) return;
     const d = e.data; if (!d || d.length < 2) return;
-    const kind = d[0] & 0xf0, ch = d[0] & 15, slot = play.channelMode === "slots" ? ch : ui.slot;
-    if (slot >= SLOTS) return;
-    if (kind === 0x90 && d[2] > 0) noteOn(d[1], d[2] / 127, slot);
-    else if (kind === 0x80 || kind === 0x90) noteOff(d[1], slot);
+    const kind = d[0] & 0xf0, ch = d[0] & 15, multi = play.channelMode === "channels";
+    // Multitimbral: the message's channel picks the slots. Otherwise it follows the keyboard's target.
+    const on = (n: number, v: number) => { if (multi) { void ensureAudio().then((ok) => ok && send({ type: "midi", channel: ch, note: n, vel: v, on: true })); } else noteOn(n, v); };
+    const off = (n: number) => { if (multi) send({ type: "midi", channel: ch, note: n, vel: 0, on: false }); else noteOff(n); };
+    if (kind === 0x90 && d[2] > 0) on(d[1], d[2] / 127);
+    else if (kind === 0x80 || kind === 0x90) off(d[1]);
     else if (kind === 0xb0 && d[1] === 1) send({ type: "control", wheel: d[2] / 127 });
     else if (kind === 0xe0) send({ type: "control", bend: (((d[2] << 7) | d[1]) - 8192) / 4096 });
     else if (kind === 0xd0) send({ type: "control", press: d[1] / 127 });

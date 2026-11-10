@@ -12,6 +12,7 @@ export type ToWorklet =
   | { type: "state"; state: SynthState }
   | { type: "param"; unit: string; id: string; value: number }
   | { type: "note"; slot: number; note: number; vel: number; on: boolean; flags?: NoteFlags }
+  | { type: "midi"; channel: number; note: number; vel: number; on: boolean }
   | { type: "play" } | { type: "stop" } | { type: "panic" }
   | { type: "pattern"; index: number }
   | { type: "control"; wheel?: number; bend?: number; press?: number };
@@ -35,6 +36,7 @@ class SynthProcessor extends AudioWorkletProcessor {
     switch (m.type) {
       case "param": e.setParam(m.unit, m.id, m.value); break;
       case "note": if (m.on) e.noteOn(m.slot, m.note, m.vel, m.flags); else e.noteOff(m.slot, m.note); break;
+      case "midi": e.midiNote(m.channel, m.note, m.vel, m.on); break;
       case "play": e.play(); break;
       case "stop": e.stop(); break;
       case "panic": e.stop(); e.panic(); break;

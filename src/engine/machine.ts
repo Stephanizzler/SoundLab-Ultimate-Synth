@@ -3,7 +3,7 @@
 import { clamp, mtof } from "../dsp/util.ts";
 import { Drift } from "../dsp/osc.ts";
 
-export type Unit = "" | "Hz" | "s" | "ms" | "dB" | "%" | "st" | "ct" | "x";
+export type Unit = "" | "Hz" | "s" | "ms" | "dB" | "%" | "st" | "ct" | "x" | "note";
 export type ParamDef = {
   id: string;
   name: string;
@@ -47,6 +47,7 @@ export function formatParam(d: ParamDef, v: number) {
   if (u === "st") return `${v > 0 ? "+" : ""}${d.step ? v : v.toFixed(1)} st`;
   if (u === "ct") return `${v > 0 ? "+" : ""}${Math.round(v)} ct`;
   if (u === "x") return `×${v.toFixed(v < 10 ? 2 : 1)}`;
+  if (u === "note") { const n = Math.round(v); return `${["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"][n % 12]}${Math.floor(n / 12) - 1}`; }
   return d.step ? String(Math.round(v)) : v.toFixed(2);
 }
 
@@ -61,13 +62,15 @@ export function indexOf(defs: readonly ParamDef[]): Record<string, number> {
   return new Proxy(out, { get: (t, k) => { if (typeof k === "string" && !(k in t)) throw new Error(`Unknown parameter ${k}`); return t[k as string]; } });
 }
 
-export type VoiceCtx = { rate: number; bend: number; wheel: number; bpm: number };
+export type VoiceCtx = { rate: number; bend: number; wheel: number; bpm: number; press: number }; // bend in semitones; wheel, press 0..1
 
 // One voice. The base class keeps pitch, glide and analog drift so each
 // machine only has to describe its own sound.
 export abstract class Voice {
   note = -1; vel = 0; accent = false; gateOn = false; started = 0;
   pitch = 60; target = 60;
+  detune = 0; // semitones, set by the slot for unison stacks
+  pan = 0; // -1..1, set by the slot for unison spread and per-voice panning
   drift: Drift;
   readonly rate: number;
   constructor(rate: number, seed: number) { this.rate = rate; this.drift = new Drift(seed * 7919 + 13); }
@@ -87,7 +90,7 @@ export abstract class Voice {
     }
   }
   // Frequency of the current pitch plus an offset in semitones (bend included).
-  hz(ctx: VoiceCtx, semis = 0) { return mtof(this.pitch + ctx.bend + semis); }
+  hz(ctx: VoiceCtx, semis = 0) { return mtof(this.pitch + this.detune + ctx.bend + semis); }
   // Call once per sample: this voice's slow analog wander, in semitones.
   wander(cents: number) { return cents ? (this.drift.next(this.rate) * cents) / 100 : 0; }
   abstract trigger(legato: boolean): void;
@@ -113,18 +116,26 @@ export type MachineDef = {
   params: readonly ParamDef[];
   createVoice(rate: number, index: number): Voice;
   createFx?(rate: number): SlotFx;
-  glideParam?: string; // mono machines: the param holding glide time
+  glideParam?: string; // the param holding glide (portamento) time
+  slideOnly?: boolean; // glide only on sequencer slide steps (TB-303)
+  priority?: "last" | "low"; // mono note priority (Moog and Korg monosynths favour the lowest key)
   presets: Preset[];
   drums?: { note: number; name: string }[];
   level: number; // output trim so machines sit at similar loudness
 };
 
-// Mixer controls every slot has, after the machine's own.
+// Mixer and part controls every slot has, after the machine's own. The part
+// controls make the rack multitimbral: each slot listens on its own MIDI
+// channel and key range, so slots can be split across the keyboard or layered.
 export const MIXER_PARAMS: ParamDef[] = [
-  { id: "level", name: "Level", min: -48, max: 6, def: -6, unit: "dB", group: "Mixer" },
-  { id: "pan", name: "Pan", min: -1, max: 1, def: 0, group: "Mixer" },
-  { id: "delay", name: "Delay send", min: 0, max: 1, def: 0, unit: "%", group: "Mixer" },
-  { id: "reverb", name: "Reverb send", min: 0, max: 1, def: 0.1, unit: "%", group: "Mixer" },
+  { id: "channel", name: "MIDI channel", min: 0, max: 16, def: 0, options: ["Omni", ...Array.from({ length: 16 }, (_, i) => String(i + 1))], group: "Part" },
+  { id: "keyLo", name: "Lowest key", min: 0, max: 127, def: 0, step: 1, unit: "note", group: "Part" },
+  { id: "keyHi", name: "Highest key", min: 0, max: 127, def: 127, step: 1, unit: "note", group: "Part" },
+  { id: "transpose", name: "Transpose", min: -36, max: 36, def: 0, step: 1, unit: "st", group: "Part" },
+  { id: "level", name: "Level", min: -48, max: 6, def: -6, unit: "dB", group: "Slot output" },
+  { id: "pan", name: "Pan", min: -1, max: 1, def: 0, group: "Slot output" },
+  { id: "delay", name: "Delay send", min: 0, max: 1, def: 0, unit: "%", group: "Slot output" },
+  { id: "reverb", name: "Reverb send", min: 0, max: 1, def: 0.1, unit: "%", group: "Slot output" },
 ];
 
 // Shared envelope parameter sets.
@@ -135,3 +146,24 @@ export const adsrParams = (prefix: string, name: string, a = 0.005, d = 0.4, s =
   { id: `${prefix}R`, name: `${name} release`, min: 0.005, max: 10, def: r, unit: "s", curve: "exp", group },
 ];
 export const cutoffParam = (def = 2000, group = "Filter"): ParamDef => ({ id: "cutoff", name: "Cutoff", min: 20, max: 20000, def, unit: "Hz", curve: "exp", group });
+
+// Voice assignment, as on the Prophet-5, Jupiter-8, OB-Xa, Nord Lead and Virus:
+// poly, unison (every voice on one note, detuned and spread), or mono.
+export const ASSIGN_MODES = ["Poly", "Unison", "Mono"] as const;
+export const assignParams = (def = 0, group = "Voice"): ParamDef[] => [
+  { id: "assign", name: "Voice mode", min: 0, max: 2, def, options: ASSIGN_MODES, group },
+  { id: "uniVoices", name: "Unison voices", min: 2, max: 8, def: 4, step: 1, group },
+  { id: "uniDetune", name: "Unison detune", min: 0, max: 50, def: 10, unit: "ct", group },
+  { id: "spread", name: "Stereo spread", min: 0, max: 1, def: 0.5, unit: "%", group },
+];
+// The arpeggiators of the Juno-60, Jupiter-8, Nord Lead 2 and Virus.
+export const ARP_MODES = ["Off", "Up", "Down", "Up & down", "Random", "As played"] as const;
+export const ARP_RATES = [
+  { name: "1/4", beats: 1 }, { name: "1/8", beats: 0.5 }, { name: "1/8T", beats: 1 / 3 }, { name: "1/16", beats: 0.25 }, { name: "1/16T", beats: 1 / 6 }, { name: "1/32", beats: 0.125 },
+] as const;
+export const arpParams = (group = "Arpeggio", ranges = 4): ParamDef[] => [
+  { id: "arp", name: "Arpeggio", min: 0, max: ARP_MODES.length - 1, def: 0, options: ARP_MODES, group },
+  { id: "arpRange", name: "Range", min: 0, max: ranges - 1, def: 0, options: ["1 octave", "2 octaves", "3 octaves", "4 octaves"].slice(0, ranges), group },
+  { id: "arpRate", name: "Rate", min: 0, max: ARP_RATES.length - 1, def: 3, options: ARP_RATES.map((r) => r.name), group },
+];
+export const ONOFF = ["Off", "On"] as const;

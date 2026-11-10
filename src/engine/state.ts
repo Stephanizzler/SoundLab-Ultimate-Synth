@@ -80,9 +80,17 @@ export const MOD_PARAMS: ParamDef[] = [
   ...[0, 1, 2, 3].map((k): ParamDef => ({ id: `mac${k}`, name: `Macro ${k + 1}`, min: 0, max: 1, def: 0, unit: "%", group: "Macros" })),
 ];
 
+const defsCache = new Map<string, ParamDef[]>();
 export function slotParamDefs(machine: string): ParamDef[] {
+  const hit = defsCache.get(machine);
+  if (hit) return hit;
   const m = machineById(machine);
-  return m ? [...m.params, ...MIXER_PARAMS] : [];
+  if (!m) return [];
+  const defs = [...m.params, ...MIXER_PARAMS];
+  const ids = new Set<string>();
+  for (const d of defs) { if (ids.has(d.id)) throw new Error(`${m.name}: parameter id "${d.id}" is used twice`); ids.add(d.id); }
+  defsCache.set(machine, defs);
+  return defs;
 }
 
 /* ---------------- Patch sources and destinations ---------------- */
@@ -129,16 +137,53 @@ export function slotState(machine: string, preset = 0): SlotState {
   return { machine, preset: p?.name ?? "", params: { ...defaultsFor(slotParamDefs(machine)), ...(p?.values ?? {}) }, mute: false, solo: false };
 }
 
+// Performances: multitimbral rack setups, like the Jupiter-8's Split and
+// Dual modes, the Nord Lead's four slots or the Virus's Multi mode. Each
+// sets up slots (machine, preset, MIDI channel, key range, transpose) and
+// leaves the patterns alone.
+type Part = { machine: string; preset: string; channel?: number; keyLo?: number; keyHi?: number; transpose?: number; level?: number; pan?: number };
+export const PERFORMANCES: { name: string; about: string; parts: Part[] }[] = [
+  { name: "Split: Moog bass / Jupiter brass", about: "Keys below middle C play a Minimoog-style bass an octave down; above it, unison Jupiter brass.", parts: [
+    { machine: "ladder-mono", preset: "Classic bass", keyHi: 59, level: -6 }, { machine: "flagship-poly", preset: "Unison brass", keyLo: 60, level: -8 }] },
+  { name: "Dual: Juno strings + Solina", about: "Both slots on the whole keyboard: Juno PWM strings layered with the string machine.", parts: [
+    { machine: "chorus-poly", preset: "PWM strings", level: -9, pan: -0.3 }, { machine: "string-machine", preset: "Full ensemble", level: -10, pan: 0.3 }] },
+  { name: "Layer: CS-80 pad + DX7 strings", about: "The CS-80's blade pad layered with FM strings for a wide, moving pad.", parts: [
+    { machine: "expressive-poly", preset: "Blade pad", level: -8 }, { machine: "fm-six", preset: "Strings", level: -12 }] },
+  { name: "Split: Prophet bass / DX7 piano", about: "Prophet-5 brass-bass on the left hand, DX7 electric piano on the right.", parts: [
+    { machine: "studio-poly", preset: "Brass", keyHi: 54, transpose: -12, level: -8 }, { machine: "fm-six", preset: "Electric piano", keyLo: 55, level: -6 }] },
+  { name: "Virus Multi: 4 parts on 4 channels", about: "Lead, bass, pad and drums on MIDI channels 1-4, ready for a DAW or the sequencer.", parts: [
+    { machine: "super-va", preset: "Trance HyperSaw", channel: 1, level: -10 }, { machine: "super-va", preset: "Hard bass", channel: 2, level: -8 },
+    { machine: "super-va", preset: "Vocal pad", channel: 3, level: -12 }, { machine: "punch-kit", preset: "Club punch", channel: 4, level: -4 }] },
+  { name: "Nord Lead slots A-D", about: "Four Nord Lead 2 programs on channels 1-4, as in its multitimbral mode.", parts: [
+    { machine: "lead-va", preset: "Sync sweep lead", channel: 1, level: -10 }, { machine: "lead-va", preset: "FM bass", channel: 2, level: -8 },
+    { machine: "lead-va", preset: "PWM pad", channel: 3, level: -12 }, { machine: "lead-va", preset: "Arpeggio", channel: 4, level: -10 }] },
+  { name: "Three-way split: 303 / Juno / PPG", about: "Acid bass under C2, Juno chords from C2 to B3, PPG bells from C4 up.", parts: [
+    { machine: "acid-bass", preset: "Squelch", keyHi: 47, level: -6 }, { machine: "chorus-poly", preset: "Classic chorus poly", keyLo: 48, keyHi: 59, level: -9 },
+    { machine: "wave-scanner", preset: "Bell partials", keyLo: 60, level: -10 }] },
+];
+export function performanceSlots(name: string): SlotState[] | null {
+  const perf = PERFORMANCES.find((p) => p.name === name);
+  if (!perf) return null;
+  return Array.from({ length: SLOTS }, (_, i) => {
+    const part = perf.parts[i];
+    if (!part) return slotState("");
+    const m = machineById(part.machine)!;
+    const s = slotState(part.machine, Math.max(0, m.presets.findIndex((p) => p.name === part.preset)));
+    Object.assign(s.params, Object.fromEntries(Object.entries({ channel: part.channel, keyLo: part.keyLo, keyHi: part.keyHi, transpose: part.transpose, level: part.level, pan: part.pan }).filter(([, v]) => v !== undefined)));
+    return s;
+  });
+}
+
 // The demo session the app opens with: a groove that shows off patching.
 export function demoState(): SynthState {
   const slots: SlotState[] = [
     slotState("punch-kit"), slotState("acid-bass"), slotState("chorus-poly"), slotState("lead-va"),
     slotState("string-machine"), slotState(""), slotState(""), slotState(""),
   ];
-  slots[0].params.level = 0; slots[1].params.level = -3; slots[1].params.delay = 0.2;
-  slots[2].params.level = -8; slots[2].params.reverb = 0.25; slots[2].params.cutoff = 2200;
-  slots[3].params.level = -8; slots[3].params.delay = 0.35; slots[3].params.reverb = 0.3;
-  slots[4].params.level = -9; slots[4].params.reverb = 0.45;
+  slots[0].params.level = -5; slots[1].params.level = -7; slots[1].params.delay = 0.2;
+  slots[2].params.level = -12; slots[2].params.reverb = 0.25; slots[2].params.cutoff = 2200;
+  slots[3].params.level = -12; slots[3].params.delay = 0.35; slots[3].params.reverb = 0.3;
+  slots[4].params.level = -13; slots[4].params.reverb = 0.45;
   const tracks = Array.from({ length: TRACKS }, (_, i) => emptyTrack(i));
   const set = (t: number, steps: number[], f: (s: Step, k: number) => void = () => {}) => steps.forEach((k, j) => { const s = tracks[t].steps[k]; s.on = true; f(s, j); });
   Object.assign(tracks[0], { name: "Kick", targets: [0], note: 36 }); tracks[0].steps.forEach((s) => (s.note = 36)); set(0, [0, 4, 8, 12]);
