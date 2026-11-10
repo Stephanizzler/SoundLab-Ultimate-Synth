@@ -16,4 +16,6 @@ function inlineWorklet(): Plugin {
     },
   };
 }
-export default defineConfig({ base: "./", plugins: [inlineWorklet()], worker: { format: "es" } });
+// Fonts are inlined (they are small Latin subsets) so the app is one file for
+// the artifact build and needs no font server offline.
+export default defineConfig({ base: "./", plugins: [inlineWorklet()], worker: { format: "es" }, build: { assetsInlineLimit: 100_000 } });

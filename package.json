@@ -1,7 +1,7 @@
 {
   "name": "soundlab-synth",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "SoundLab Ultimate Synth: a rack of classic-synth models and drum machines, played by a step sequencer that can be patched to anything. Runs in the browser.",
   "type": "module",
   "scripts": {
@@ -11,8 +11,14 @@
     "artifact": "vite build && node tools/artifact.mjs dist/artifact.html",
     "test": "node tests/dsp.test.mjs && node tests/machines.test.mjs && node tests/sequencer.test.mjs && node tests/multi.test.mjs && node tests/project.test.mjs"
   },
-  "engines": { "node": ">=22.6" },
+  "engines": {
+    "node": ">=22.6"
+  },
   "devDependencies": {
+    "@fontsource/barlow-condensed": "^5.1.0",
+    "@fontsource/cinzel": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.1",
+    "@fontsource/michroma": "^5.1.0",
     "esbuild": "0.21.5",
     "typescript": "5.6.3",
     "vite": "5.4.11"

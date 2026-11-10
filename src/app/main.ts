@@ -11,7 +11,16 @@ import {
 import { APP_ID, describe, midiToTrack, patternToMidi, saveRender, stateFromVersion } from "../engine/projectio.ts";
 import { MIDI_MIME } from "../engine/midi.ts";
 import { writeWav } from "../engine/wav.ts";
-import { h, $, select, control, knobRegistry, noteName } from "./ui.ts";
+import { h, $, select, control, knobRegistry, noteName, type Look } from "./ui.ts";
+import "@fontsource/michroma/latin-400.css";
+import "@fontsource/barlow-condensed/latin-500.css";
+import "@fontsource/barlow-condensed/latin-600.css";
+import "@fontsource/barlow-condensed/latin-700.css";
+import "@fontsource/barlow-condensed/latin-500-italic.css";
+import "@fontsource/barlow-condensed/latin-700-italic.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/latin-600.css";
+import "@fontsource/cinzel/latin-700.css";
 import { zipOne } from "./zipone.ts";
 import WORKLET from "./worklet.ts?worklet";
 import RenderWorker from "./render-worker.ts?worker&inline";
@@ -150,14 +159,16 @@ function setParam(unitKey: string, id: string, v: number) {
   if (unitKey === "fx") state.fx[id] = v; else if (unitKey === "mod") state.mod[id] = v; else state.slots[Number(unitKey)].params[id] = v;
   send({ type: "param", unit: unitKey, id, value: v }); persist();
 }
-function controlsFor(unitKey: string, keyPrefix: string, defs: ParamDef[], values: Record<string, number>) {
+// The Part and Slot output sections are SoundLab's own, so they keep the app's plain controls.
+const SOUNDLAB_GROUPS = new Set(["Part", "Slot output"]);
+function controlsFor(unitKey: string, keyPrefix: string, defs: ParamDef[], values: Record<string, number>, look: Look = {}) {
   const groups = new Map<string, HTMLElement>();
   const grid = h("div", { class: "groups-grid" });
   for (const d of defs) {
     const g = d.group ?? "";
     if (!groups.has(g)) { const box = h("div", { class: "ctls" }); groups.set(g, box); grid.append(h("fieldset", { class: "grp" }, h("legend", {}, g), box)); }
     const key = `${keyPrefix}.${d.id}`;
-    groups.get(g)!.append(control(key, d, values[d.id] ?? d.def, (v) => setParam(unitKey, d.id, v), () => ui.armed !== null, () => patchTo(key)));
+    groups.get(g)!.append(control(key, d, values[d.id] ?? d.def, (v) => setParam(unitKey, d.id, v), () => ui.armed !== null, () => patchTo(key), SOUNDLAB_GROUPS.has(g) ? {} : look));
   }
   return grid;
 }
@@ -184,20 +195,29 @@ function slotUnit(i: number) {
 // The open panel, dressed as the machine's faceplate (see faces.ts).
 function faceplate(i: number, m: MachineDef, preset: string, values: Record<string, number>) {
   const f = faceOf(m.id);
-  const body = h("div", { class: `ubody face ${f.cheeks ? `cheeks-${f.cheeks}` : ""} plate-${f.plate ?? "wide"}` });
+  const body = h("div", { class: `ubody face tex-${f.texture ?? "smooth"} leg-${f.legend ?? "line"} pf-${f.plateFont ?? "plate"} ${f.cheeks ? `cheeks-${f.cheeks}` : ""} ${f.capFromStripe ? "capstripe" : ""}` });
   for (const [k, val] of Object.entries(f.v)) body.style.setProperty(k, val);
-  if (f.font) body.style.setProperty("--fp-font", f.font);
-  const lcd = f.lcd ? h("div", { class: "lcd", "aria-hidden": "true" }, h("span", {}, `${String(i + 1).padStart(2, "0")} ${preset || "Init"}`.toUpperCase().slice(0, 18)), h("span", {}, m.name.toUpperCase().slice(0, 18))) : null;
-  body.append(h("div", { class: "plate" }, h("div", { class: "brandbox" }, h("span", { class: "brand" }, m.name), h("span", { class: "tag" }, f.tagline)), lcd));
+  const top = `${String(i + 1).padStart(2, "0")} ${preset || "Init"}`.toUpperCase().slice(0, 18);
+  const display = f.display === "lcd" ? h("div", { class: "lcd", "aria-hidden": "true" }, h("span", {}, top), h("span", {}, m.name.toUpperCase().slice(0, 18)))
+    : f.display === "led" ? h("div", { class: "led7", "aria-hidden": "true" }, String(i + 1).padStart(2, "0"), h("small", {}, (preset || "Init").slice(0, 14))) : null;
+  const screw = () => (f.screws ? h("span", { class: "screw", "aria-hidden": "true" }) : null);
+  body.append(h("div", { class: "plate" }, screw(), h("div", { class: "brandbox" }, h("span", { class: "brand" }, m.name), h("span", { class: "tag" }, f.tagline)), display, screw()));
   body.append(h("p", { class: "about" }, h("strong", {}, `Modelled on the ${m.inspiredBy}. `), m.about, " ", h("em", {}, "Not affiliated with or endorsed by the original's maker.")));
-  const grid = controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], values);
+  const grid = controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], values, f.look);
   let k = 0;
   grid.querySelectorAll<HTMLFieldSetElement>("fieldset.grp").forEach((fs) => {
     const g = fs.querySelector("legend")?.textContent ?? "";
-    if (g === "Part" || g === "Slot output") { fs.classList.add("sl"); return; } // SoundLab's own controls keep the app's look
+    if (SOUNDLAB_GROUPS.has(g)) { fs.classList.add("sl"); return; }
     if (f.stripes) fs.style.setProperty("--stripe", f.stripes[k++ % f.stripes.length]);
   });
   body.append(grid);
+  // Decorative strips: the drum machines' row of step keys, patch jacks on the semi-modulars.
+  if (f.strip === "steps808" || f.strip === "steps909") {
+    const cols = f.strip === "steps808" ? ["#e2442b", "#f08a2a", "#f3c64b", "#efe6d0"] : ["#efefea", "#efefea", "#f07a1a", "#efefea"];
+    body.append(h("div", { class: "stepstrip", "aria-hidden": "true" }, ...Array.from({ length: 16 }, (_, j) => { const e = h("i", {}); e.style.background = cols[Math.floor(j / 4)]; return e; })));
+  } else if (f.strip === "jacks") {
+    body.append(h("div", { class: "jackstrip", "aria-hidden": "true" }, ...Array.from({ length: 12 }, () => h("i", {}))));
+  }
   return body;
 }
 // A short note of a slot's part settings when they differ from "every key, any channel".
