@@ -110,4 +110,36 @@ for (const perf of PERFORMANCES) {
   const st = demoState(); st.slots = performanceSlots(perf.name);
   assert.deepEqual(sanitizeState(st).slots, st.slots, `${perf.name} survives validation`);
 }
+// Sidechain: a slot's output follower ducks another slot, even with the source slot muted.
+{
+  const e = rack([["boom-kit", {}], ["string-machine", {}]]);
+  e.state.slots[0].mute = true; e.state.cables = [{ src: "s0.follow", dst: "s1.level", amt: -0.6 }]; e.setState(e.state);
+  e.noteOn(1, 60, 0.8); run(e, 0.3);
+  const lvl = () => e.slots[1].eff[e.slots[1].index("level")], base = e.slots[1].base[e.slots[1].index("level")];
+  assert.ok(Math.abs(lvl() - base) < 0.5, "no kick, no ducking");
+  e.noteOn(0, 36, 1); run(e, 0.02);
+  assert.ok(lvl() < base - 10, `the kick's output ducks the strings (${lvl().toFixed(1)} dB vs ${base} dB)`);
+  run(e, 1.5);
+  assert.ok(Math.abs(lvl() - base) < 1, "and they come back as it fades");
+}
+// Piano-roll chords: a step plays its extra notes too, and they survive saving.
+{
+  const e = rack([["studio-poly", {}]], { bpm: 120 });
+  const tr = e.state.patterns[0].tracks[0]; tr.targets = [0];
+  Object.assign(tr.steps[0], { on: true, note: 48, more: [55, 64, 71] }); e.setState(e.state);
+  e.play(); run(e, 0.05);
+  assert.deepEqual(gated(e.slots[0]).sort((a, b) => a - b), [48, 55, 64, 71], "the step plays all four notes");
+  const back = sanitizeState(JSON.parse(JSON.stringify(e.state)));
+  assert.deepEqual(back.patterns[0].tracks[0].steps[0].more, [55, 64, 71]);
+  const junk = sanitizeState({ patterns: [{ tracks: [{ steps: [{ on: true, more: [60, 60, 200, -1, 3.5, 61, 62, 63, 64, 65, 66, 67, 68] }] }] }] });
+  assert.deepEqual(junk.patterns[0].tracks[0].steps[0].more, [60, 61, 62, 63, 64, 65, 66, 67], "extra notes are cleaned: whole, in range, unique, at most 8");
+}
+// MIDI learn mappings are validated like everything else loaded.
+{
+  const st = demoState();
+  st.midiMap = [{ ch: 1, cc: 74, dst: "s1.cutoff", min: 0.2, max: 0.9 }, { ch: 1, cc: 74, dst: "s2.cutoff", min: 1, max: 0 }, { ch: 99, cc: 500, dst: "nowhere", min: 3, max: -2 }];
+  const clean = sanitizeState(st).midiMap;
+  assert.equal(clean.length, 2, "mappings to missing knobs are dropped");
+  assert.deepEqual(clean[1], { ch: 1, cc: 74, dst: "s2.cutoff", min: 1, max: 0 }, "one CC can drive several knobs, inverted if wanted");
+}
 console.log("multitimbral, voice mode and arpeggiator tests passed");

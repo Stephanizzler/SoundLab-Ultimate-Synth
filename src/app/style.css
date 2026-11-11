@@ -408,3 +408,87 @@ fieldset.grp legend { letter-spacing: 0.18em; }
   .ctl.ctl-scaled, .ctl.ctl-sel { width: 76px; }
   .stepstrip { gap: 2px; }
 }
+
+#saved { margin-left: 10px; }
+#saved:empty { display: none; }
+
+/* Output scope and spectrum. */
+.scopes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+.scopes figure { margin: 0; min-width: 0; }
+.scopes canvas { display: block; width: 100%; height: 130px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg); }
+.scopes figcaption { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+#scopeReadout { font-family: var(--f-mono); letter-spacing: 0; text-transform: none; margin-left: 8px; }
+@media (max-width: 640px) { .scopes { grid-template-columns: minmax(0, 1fr); } .scopes canvas { height: 110px; } }
+
+/* MIDI learn. */
+body.learning .ctl { cursor: crosshair; outline: 1px dashed color-mix(in srgb, var(--good) 60%, transparent); }
+body.learning .ctl:hover { background: color-mix(in srgb, var(--good) 15%, transparent); }
+.ctl.learn-target { outline: 2px solid var(--good) !important; background: color-mix(in srgb, var(--good) 20%, transparent); }
+.ctl[data-cc] { position: relative; }
+.ctl[data-cc]::after { content: attr(data-cc); position: absolute; top: -2px; right: -2px; font-family: var(--f-mono); font-size: 9px; padding: 0 3px; border-radius: 3px; background: var(--good); color: #062a14; pointer-events: none; }
+.mappings { display: grid; gap: 6px; margin-top: 8px; }
+.mapping { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 8px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-control); }
+.mapping .cc { font-family: var(--f-mono); color: var(--good); }
+.mapping .dst { flex: 1 1 160px; min-width: 0; }
+.mapping input[type="range"] { width: 90px; min-width: 70px; }
+.mapping output { width: 38px; font-size: 12px; }
+
+/* ---------------- The back of the rack ---------------- */
+.rackback { position: relative; display: grid; gap: 8px; padding-bottom: 40px; }
+.backmod { position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; padding: 12px 34px; border-radius: 4px; min-width: 0;
+  background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px), linear-gradient(180deg, #30333a, #202227); color: #d9dbdf; box-shadow: inset 0 1px 0 #ffffff1c, inset 0 -1px 0 #0006; }
+.backmod > .screw { position: absolute; top: 10px; width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e2e2e2, #777 58%, #3a3a3a); }
+.backmod > .screw:first-child { left: 10px; } .backmod > .screw:last-child { right: 10px; }
+.backmod .bid { display: flex; flex-direction: column; gap: 2px; min-width: 150px; margin-right: auto; }
+.backmod .bid b { font-family: var(--f-plate); font-weight: 400; font-size: 13px; letter-spacing: 0.1em; }
+.backmod .bid span { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.6; }
+.jgroup { position: relative; padding: 12px 8px 4px; border: 1px solid #ffffff26; border-radius: 4px; min-width: 0; }
+.jgroup .gt { position: absolute; top: -8px; left: 8px; padding: 0 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; background: #2a2d33; white-space: nowrap; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; }
+.jacks { display: flex; flex-wrap: wrap; gap: 6px; }
+.jack { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; background: none; border: 0; padding: 2px; color: inherit; cursor: grab; touch-action: none;
+  font: 700 9.5px/1.15 var(--f-label); letter-spacing: 0.06em; text-transform: uppercase; text-align: center; }
+.jack i { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle, #030303 0 30%, #3c3f44 32% 44%, #d0d3d7 48%, #8b8f95 64%, #2a2c30 70%); box-shadow: 0 1px 2px #000; }
+.jack.out span { color: #ffcf8a; } .jack.in span { color: #9fd3ff; }
+.jack.used i { box-shadow: 0 0 0 2px #ffffff40, 0 1px 2px #000; }
+.jack:hover i, .jack:focus-visible i { box-shadow: 0 0 0 3px var(--accent), 0 0 10px var(--accent); }
+.cablelayer { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 5; }
+.cable-line { fill: none; stroke-width: 5; stroke-linecap: round; opacity: 0.92; }
+.cable-line.dragging { opacity: 0.7; stroke-dasharray: 2 6; }
+.cshadow { fill: none; stroke: #0008; stroke-width: 7; transform: translate(2px, 4px); }
+.cable-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+
+/* ---------------- Patch graph ---------------- */
+.graphwrap { overflow: auto; max-height: 640px; border: 1px solid var(--line); border-radius: var(--r-control); background:
+  radial-gradient(circle, #ffffff10 1px, transparent 1.5px) 0 0 / 20px 20px, var(--bg); }
+.graph { position: relative; }
+.graphwires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.gwire { fill: none; stroke-width: 3; opacity: 0.9; }
+.gwire.notes { stroke-dasharray: 6 5; pointer-events: stroke; cursor: pointer; stroke-width: 2.5; }
+.gwire.dragging { stroke-dasharray: 3 5; }
+.gwire-hit { fill: none; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+.gamt { fill: var(--text); font: 600 10px var(--f-mono); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.gnode { position: absolute; width: 190px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 16px #0008; font-size: 12px; }
+.gnode.slot { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.gnode .ghead { padding: 5px 8px; font-family: var(--f-plate); font-size: 11px; letter-spacing: 0.06em; background: var(--raised); border-radius: 6px 6px 0 0; cursor: move; touch-action: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gport { display: flex; align-items: center; gap: 6px; padding: 1px 8px; min-height: 18px; color: var(--muted); }
+.gport.out { justify-content: flex-end; cursor: crosshair; touch-action: none; }
+.gport i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.gport.out i { background: #ffcf8a; margin-right: -12px; box-shadow: 0 0 0 2px var(--panel); }
+.gport.in i { background: #9fd3ff; margin-left: -12px; box-shadow: 0 0 0 2px var(--panel); }
+.gport.add { color: var(--info); font-style: italic; }
+.gport span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------- Popovers ---------------- */
+.popover { position: fixed; z-index: 60; width: min(320px, calc(100vw - 24px)); background: var(--panel); border: 1px solid var(--info); border-radius: var(--r-panel); padding: 10px 12px; box-shadow: 0 12px 30px #000c; display: grid; gap: 8px; }
+.popover p { margin: 0; font-size: 13px; }
+.popover select { width: 100%; }
+.popover input[type="range"] { width: 160px; }
+
+/* ---------------- Piano roll ---------------- */
+.prbar { margin-top: 0; }
+.prscroll { height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg); }
+.prinner { display: flex; width: max-content; }
+.prkeys { position: sticky; left: 0; z-index: 2; display: block; cursor: pointer; box-shadow: 2px 0 6px #0008; }
+.prgrid { display: block; cursor: crosshair; touch-action: none; }
+.prgrid:focus-visible { outline: 2px solid var(--info); outline-offset: -2px; }
+@media (max-width: 560px) { .prscroll { height: 340px; } .backmod { padding: 12px 26px; } .jack { width: 52px; } }

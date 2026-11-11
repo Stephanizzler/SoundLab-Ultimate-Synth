@@ -38,7 +38,7 @@ export type NoteFlags = { slide?: boolean; accent?: boolean };
 export class Slot extends Unit {
   voices: Voice[]; fx: SlotFx | null; counter = 0;
   L = new Float32Array(BLOCK); R = new Float32Array(BLOCK); vbuf = new Float32Array(BLOCK);
-  peak = 0; mute = false; solo = false;
+  peak = 0; follow = 0; mute = false; solo = false;
   held: number[] = []; // mono/unison note stack (played notes, last = sounding)
   sounding = new Map<number, number>(); // incoming note -> transposed note
   // Arpeggiator.
@@ -185,6 +185,10 @@ export class Slot extends Unit {
     let peak = 0;
     for (let k = 0; k < n; k++) peak = Math.max(peak, Math.abs(this.L[k]), Math.abs(this.R[k]));
     this.peak = Math.max(peak, this.peak * 0.995);
+    // Envelope follower for sidechaining: fast attack, smooth release. Taken before
+    // mute, so a muted "ghost" kick can still duck other parts.
+    const target = Math.min(1, peak * 2);
+    this.follow += (target - this.follow) * (1 - Math.exp(-n / ((target > this.follow ? 0.004 : 0.12) * this.rate)));
   }
 }
 
@@ -273,6 +277,7 @@ export class Engine {
         default: return (e) => { const tr = e.track(t); if (!tr || e.tPos[t] < 0) return 0; const per = DIVISIONS[tr.division].perBeat; return ((e.beat * per) % tr.length) / tr.length; };
       }
     }
+    m = /^s(\d)\.follow$/.exec(id); if (m) { const i = Number(m[1]); return i < SLOTS ? (e) => e.slots[i]?.follow ?? 0 : null; }
     m = /^lfo(\d)$/.exec(id); if (m) { const k = Number(m[1]); return k < 4 ? (e) => e.lfoVal[k] : null; }
     m = /^mac(\d)$/.exec(id); if (m) { const k = Number(m[1]), i = this.modUnit.index(`mac${k}`); return k < 4 ? (e) => e.modUnit.eff[i] : null; }
     if (id === "in.wheel") return (e) => e.wheel;
@@ -313,7 +318,7 @@ export class Engine {
     this.slidePending[t] = 0;
     if (!st.on || tr.mute || !tr.targets.length) return;
     if (st.prob < 1 && this.rng.next() >= st.prob) return;
-    const notes = CHORDS[st.chord].iv.map((iv) => Math.min(127, st.note + iv));
+    const notes = [...new Set([...CHORDS[st.chord].iv.map((iv) => Math.min(127, st.note + iv)), ...st.more])];
     const r = st.ratchet, sub = stepBeats / r;
     for (let k = 0; k < r; k++) {
       // A slid step holds its gate into the next step, so the next note arrives legato.

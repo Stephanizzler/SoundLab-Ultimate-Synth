@@ -98,7 +98,8 @@ export function patternToMidi(s: SynthState, bars: number): Uint8Array {
       const start = (c / per + swing) * spb, dur = spb / per, sub = dur / st.ratchet;
       for (let k = 0; k < st.ratchet; k++) {
         const len = st.slide ? sub * 1.05 : Math.min(st.len * dur, st.ratchet > 1 ? sub * 0.9 : st.len * dur);
-        for (const iv of CHORDS[st.chord].iv) notes.push({ pitch: Math.min(127, st.note + iv), start: start + k * sub, end: start + k * sub + len, velocity: Math.max(1, Math.round(st.vel * 127)) });
+        const pitches = new Set([...CHORDS[st.chord].iv.map((iv) => Math.min(127, st.note + iv)), ...st.more]);
+        for (const pitch of pitches) notes.push({ pitch, start: start + k * sub, end: start + k * sub + len, velocity: Math.max(1, Math.round(st.vel * 127)) });
       }
     }
     if (notes.length) tracks.push({ name: tr.name, channel: drum ? 9 : ti % 9, program: 0, notes });
@@ -108,8 +109,8 @@ export function patternToMidi(s: SynthState, bars: number): Uint8Array {
 }
 
 // Puts a MIDI file's notes on a sequencer track's steps. Notes are snapped to
-// the track's grid; where several start on one step, the lowest is kept and
-// the rest are counted so the app can say so.
+// the track's grid; notes starting on the same step become a chord (the
+// lowest leads, up to eight more), and any beyond that are counted.
 export function midiToTrack(bytes: Uint8Array, track: Track, opts: { bpm?: number; part?: number } = {}) {
   const song = readMidi(bytes);
   const part = song.tracks[opts.part ?? 0] ?? song.tracks[0];
@@ -121,7 +122,14 @@ export function midiToTrack(bytes: Uint8Array, track: Track, opts: { bpm?: numbe
     const k = Math.round(n.start / stepSec);
     if (k >= MAX_STEPS) { beyond++; continue; }
     const st = steps[k];
-    if (st.on) { if (n.pitch < st.note) st.note = n.pitch; dropped++; continue; }
+    if (st.on) {
+      // A chord: the lowest note leads, the others become the step's extra notes (up to 8).
+      const all = [st.note, ...st.more, n.pitch].sort((x, y) => x - y);
+      const uniq = [...new Set(all)];
+      if (uniq.length > 9) { dropped++; continue; }
+      st.note = uniq[0]; st.more = uniq.slice(1);
+      continue;
+    }
     Object.assign(st, { on: true, note: n.pitch, vel: Math.max(0.05, n.velocity / 127), len: Math.max(0.1, Math.min(16, (n.end - n.start) / stepSec)) });
     last = Math.max(last, k);
   }

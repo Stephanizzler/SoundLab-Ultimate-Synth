@@ -1,7 +1,7 @@
 import { color } from "../core/design.ts";
 import { readBundle, writeBundle, problems, owner, BUNDLE_MIME, type Project, type Loudness } from "../core/index.ts";
 import { MACHINES, machineById, drumName } from "../machines/index.ts";
-import { MIXER_PARAMS, formatParam, type MachineDef, type ParamDef } from "../engine/machine.ts";
+import { MIXER_PARAMS, formatParam, fromNorm, type MachineDef, type ParamDef } from "../engine/machine.ts";
 import { faceOf } from "./faces.ts";
 import {
   CHORDS, DIVISIONS, FX_PARAMS, MOD_PARAMS, PATTERNS, SLOTS, TRACKS, MAX_STEPS, TRACK_OUTPUTS,
@@ -23,6 +23,12 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-600.css";
 import "@fontsource/cinzel/latin-700.css";
 import { zipOne } from "./zipone.ts";
+import { startScopes } from "./scope.ts";
+import { connectBleMidi, bluetoothAvailable } from "./blemidi.ts";
+import { renderRackBack } from "./rackback.ts";
+import { renderGraph } from "./graph.ts";
+import { renderPianoRoll } from "./pianoroll.ts";
+import type { PatchCtx } from "./cables.ts";
 import WORKLET from "./worklet.ts?worklet";
 import RenderWorker from "./render-worker.ts?worker&inline";
 import type { Tick, ToWorklet } from "./worklet.ts";
@@ -48,12 +54,97 @@ const ui = {
   slot: 0, // the slot the keyboard plays and whose panel is open
   open: new Set<number>([0]),
   track: 3, page: 0, lane: "note" as LaneId, armed: null as string | null,
+  back: false, // the rack turned round to show its jacks and cables
+  patchView: "list" as "list" | "graph",
   tick: null as Tick | null,
 };
-let saveTimer = 0;
+// History and autosave. Every change marks the session dirty and, after a
+// short pause (so one knob drag is one step), becomes an undo step.
+// The session is saved to this browser every 10 seconds when it changed,
+// and when the page is hidden or closed; a restore point is kept each minute.
+const AUTOSAVES_KEY = "soundlab.synth.autosaves.v1";
+const snap = () => JSON.stringify(compactState(state));
+const history = { past: [] as string[], future: [] as string[], last: "", timer: 0 };
+let dirty = false;
 function persist() {
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(compactState(state))); } catch { /* storage off: fine */ } }, 400);
+  dirty = true;
+  clearTimeout(history.timer);
+  history.timer = window.setTimeout(recordHistory, 350);
+}
+function recordHistory() {
+  clearTimeout(history.timer);
+  const now = snap();
+  if (now === history.last) return;
+  if (history.last) { history.past.push(history.last); if (history.past.length > 100) history.past.shift(); }
+  history.last = now; history.future = [];
+  syncUndo();
+}
+// Loads a snapshot. The baseline is taken from the loaded state itself, so
+// re-validation can't look like a new edit and clear the redo steps.
+function applySnapshot(data: string) {
+  clearTimeout(history.timer);
+  state = sanitizeState(JSON.parse(data));
+  ui.track = Math.min(ui.track, TRACKS - 1);
+  history.last = snap();
+  send({ type: "state", state }); dirty = true;
+  renderAll(); syncUndo();
+}
+function undo() {
+  recordHistory();
+  const prev = history.past.pop();
+  if (!prev) return;
+  history.future.push(history.last);
+  applySnapshot(prev); status("Undone.");
+}
+function redo() {
+  recordHistory();
+  const next = history.future.pop();
+  if (!next) return;
+  history.past.push(history.last);
+  applySnapshot(next); status("Redone.");
+}
+function syncUndo() {
+  const u = document.getElementById("undo") as HTMLButtonElement | null, r = document.getElementById("redo") as HTMLButtonElement | null;
+  if (u) u.disabled = history.past.length === 0;
+  if (r) r.disabled = history.future.length === 0;
+}
+type Autosave = { at: number; name: string; data: string };
+function readAutosaves(): Autosave[] { try { const v = JSON.parse(localStorage.getItem(AUTOSAVES_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => x && typeof x.data === "string" && typeof x.at === "number") : []; } catch { return []; } }
+function autosave() {
+  if (!dirty) return;
+  const data = snap();
+  try {
+    localStorage.setItem(STORE_KEY, data);
+    const points = readAutosaves();
+    if (!points.length || Date.now() - points[0].at >= 60_000) points.unshift({ at: Date.now(), name: state.name, data });
+    else if (points[0].data !== data) points[0] = { at: points[0].at, name: state.name, data };
+    localStorage.setItem(AUTOSAVES_KEY, JSON.stringify(points.slice(0, 20)));
+    dirty = false;
+    const el = document.getElementById("saved");
+    if (el) el.textContent = `Autosaved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    renderAutosaves();
+  } catch {
+    const el = document.getElementById("saved");
+    if (el) el.textContent = "Autosave is off: this browser isn't letting the page store data.";
+  }
+}
+setInterval(autosave, 10_000);
+window.addEventListener("pagehide", autosave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) autosave(); });
+function renderAutosaves() {
+  const box = document.getElementById("autosaves");
+  if (!box) return;
+  const points = readAutosaves();
+  const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  box.replaceChildren(select([{ value: "", label: points.length ? `Restore an autosave (${points.length})…` : "No autosaves yet" }, ...points.map((p, i) => ({ value: String(i), label: `${new Date(p.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${p.name} (${ago(p.at)})` }))], "", (v) => {
+    if (v === "") return;
+    const p = points[Number(v)];
+    try { sanitizeState(JSON.parse(p.data)); } catch { showError("That autosave can't be read."); return; }
+    recordHistory();
+    history.past.push(history.last); history.future = [];
+    applySnapshot(p.data);
+    status(`Restored the autosave from ${new Date(p.at).toLocaleTimeString()}. Undo goes back to what you had.`);
+  }, "Restore an autosave"));
 }
 const pattern = () => state.patterns[state.pattern];
 const track = (t = ui.track) => pattern().tracks[t];
@@ -80,6 +171,11 @@ function ensureAudio(): Promise<boolean> {
       await loadWorklet(ac);
       node = new AudioWorkletNode(ac, "soundlab-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       node.connect(ac.destination);
+      // A parallel tap for the scope and spectrum analyser.
+      const analyser = ac.createAnalyser(); analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0.55;
+      node.connect(analyser);
+      $("scopeNote").hidden = true;
+      startScopes(analyser, $<HTMLCanvasElement>("scope"), $<HTMLCanvasElement>("spectrum"), $("scopeReadout"));
       node.port.onmessage = (e: MessageEvent<Tick>) => onTick(e.data);
       send({ type: "native", on: useNative });
       send({ type: "state", state });
@@ -142,6 +238,7 @@ function onTick(t: Tick) {
   // Playhead.
   document.querySelectorAll(".step.now").forEach((e) => e.classList.remove("now"));
   if (t.playing) t.pos.forEach((pos, ti) => { if (pos >= 0 && Math.floor(pos / 16) === ui.page) document.querySelector(`#st${ti}_${pos % 16}`)?.classList.add("now"); });
+  roll?.playhead(t.playing ? t.pos[ui.track] : -1);
   // Knobs being moved by cables.
   const seen = new Set<string>();
   for (const [unit, idx, v] of t.mods) {
@@ -172,7 +269,7 @@ function controlsFor(unitKey: string, keyPrefix: string, defs: ParamDef[], value
     const g = d.group ?? "";
     if (!groups.has(g)) { const box = h("div", { class: "ctls" }); groups.set(g, box); grid.append(h("fieldset", { class: "grp" }, h("legend", {}, g), box)); }
     const key = `${keyPrefix}.${d.id}`;
-    groups.get(g)!.append(control(key, d, values[d.id] ?? d.def, (v) => setParam(unitKey, d.id, v), () => ui.armed !== null, () => patchTo(key), SOUNDLAB_GROUPS.has(g) ? {} : look));
+    groups.get(g)!.append(control(key, d, values[d.id] ?? d.def, (v) => setParam(unitKey, d.id, v), () => ui.armed !== null || learn.on, () => (learn.on ? learnPick(key) : patchTo(key)), SOUNDLAB_GROUPS.has(g) ? {} : look));
   }
   return grid;
 }
@@ -262,7 +359,12 @@ function renderRack() {
   const perf = select([{ value: "", label: "Load a performance (split / layer / multi)…" }, ...PERFORMANCES.map((p) => ({ value: p.name, label: p.name }))], "", (v) => {
     if (v && ask(`${PERFORMANCES.find((p) => p.name === v)?.about}\n\nThis replaces the rack's slots (the patterns stay).`)) loadPerformance(v); else renderRack();
   }, "Performance");
-  rack.append(h("div", { class: "row wrap", style: "margin:0 0 4px" }, perf, h("span", { class: "muted small" }, "Every slot is a part with its own MIDI channel, key range and transpose (open a slot: Part), so the rack splits and layers like a Jupiter-8, a Nord Lead or a Virus in Multi mode.")));
+  const flip = h("button", { class: `button ${ui.back ? "primary" : ""}`, "aria-pressed": String(ui.back), title: "Turn the rack round to patch cables between modules" }, ui.back ? "⟲ Show the front" : "⟲ Flip rack");
+  flip.addEventListener("click", () => { ui.back = !ui.back; renderRack(); });
+  rack.append(h("div", { class: "row wrap", style: "margin:0 0 4px" }, flip, perf, h("span", { class: "muted small" }, ui.back
+    ? "The back of the rack: drag from an output (amber) to an input (blue) to patch. A slot's Level out drives sidechain ducking. Click a cable to set its amount or remove it."
+    : "Every slot is a part with its own MIDI channel, key range and transpose (open a slot: Part), so the rack splits and layers like a Jupiter-8, a Nord Lead or a Virus in Multi mode.")));
+  if (ui.back) { renderRackBack(patchCtx, rack); return; }
   state.slots.forEach((_, i) => rack.append(slotUnit(i)));
   const unitBox = (key: number, title: string, about: string, body: () => HTMLElement) => {
     const open = ui.open.has(key);
@@ -313,6 +415,22 @@ function renderSeq() {
   const grid = h("div", { class: "tracks-grid" });
   pattern().tracks.forEach((tr, t) => grid.append(trackRow(tr, t)));
   root.append(grid, laneEditor());
+  renderRoll();
+}
+let roll: { redraw(): void; playhead(pos: number): void } | null = null;
+function renderRoll() {
+  roll = renderPianoRoll({
+    track: () => track(),
+    commit: () => seqEdit(),
+    stepsChanged: () => { const keep = roll; renderSeqGridOnly(); roll = keep; },
+    preview: (notes, vel) => { const tr = track(); if (!tr.targets.length || ui.tick?.playing) return; void ensureAudio().then((ok) => { if (!ok) return; for (const s of tr.targets) for (const n of notes) send({ type: "note", slot: s, note: n, vel, on: true }); setTimeout(() => { for (const s of tr.targets) for (const n of notes) send({ type: "note", slot: s, note: n, vel: 0, on: false }); }, 220); }); },
+    status: (t) => status(t),
+  }, $("pianoroll"));
+}
+// Refreshes the step buttons after a piano-roll edit without rebuilding the roll.
+function renderSeqGridOnly() {
+  pattern().tracks.forEach((tr, t) => { const row = document.querySelectorAll(".trow")[t]; if (row) row.replaceWith(trackRow(tr, t)); });
+  renderLanesOnly();
 }
 function trackRow(tr: Track, t: number) {
   const name = h("input", { type: "text", class: "tname", value: tr.name, maxlength: 40, "aria-label": `Track ${t + 1} name` });
@@ -491,7 +609,7 @@ function importMidi(bytes: Uint8Array, name: string, part = 0) {
     const tr = track(), r = midiToTrack(bytes, tr, { part, bpm: state.bpm });
     pattern().tracks[ui.track] = { ...r.track, targets: tr.targets, division: tr.division, mute: tr.mute, note: r.track.steps.find((s) => s.on)?.note ?? tr.note };
     seqEdit(); renderSeq(); renderPatch();
-    const extra = [r.dropped ? `${r.dropped} notes that started on an already-used step were left out (one note per step; use the chord lane for chords)` : "", r.beyond ? `${r.beyond} notes past step 64 were left out` : ""].filter(Boolean).join("; ");
+    const extra = [r.dropped ? `${r.dropped} notes were left out where more than nine started on one step` : "", r.beyond ? `${r.beyond} notes past step 64 were left out` : ""].filter(Boolean).join("; ");
     status(`${name}: ${r.notes} notes placed on ${tr.name} (file tempo ${r.bpm} BPM, snapped to ${DIVISIONS[tr.division].name}).${extra ? ` ${extra}.` : ""}`);
     if (r.parts.length > 1) {
       const box = $("projectBox"); box.hidden = false; box.replaceChildren(h("p", {}, `${name} has ${r.parts.length} parts. Which one goes on ${tr.name}?`),
@@ -530,11 +648,47 @@ function arm(id: string) {
   document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("armed", (c as HTMLElement).dataset.src === ui.armed));
 }
 function disarm() { ui.armed = null; document.body.classList.remove("arming"); $("armBar").hidden = true; document.querySelectorAll(".chip.armed").forEach((c) => c.classList.remove("armed")); }
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.armed) disarm(); });
-function markPatched() { const on = new Set(state.cables.map((c) => c.dst)); for (const [k, kh] of knobRegistry) kh.setPatched(on.has(k)); }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ui.armed) disarm(); if (e.key === "Escape" && learn.on) setLearn(false); });
+function markPatched() {
+  const on = new Set(state.cables.map((c) => c.dst));
+  const ccs = new Map<string, string>();
+  for (const m of state.midiMap) ccs.set(m.dst, `${ccs.has(m.dst) ? `${ccs.get(m.dst)}, ` : ""}CC ${m.cc}`);
+  for (const [k, kh] of knobRegistry) {
+    kh.setPatched(on.has(k));
+    const cc = ccs.get(k);
+    if (cc) kh.el.dataset.cc = cc; else delete kh.el.dataset.cc;
+    kh.el.classList.toggle("learn-target", learn.target === k);
+  }
+}
 
+// What the rack's back, the patch graph and their popovers edit through.
+const patchCtx: PatchCtx = {
+  state: () => state,
+  commit: () => commit(),
+  changed: () => { renderPatch(); if (ui.back) renderRack(); else markPatched(); },
+  status: (t) => status(t),
+};
+// Connecting or disconnecting a track's notes to a slot (from the patch graph).
+function routeTrack(t: number, slot: number) {
+  const tr = pattern().tracks[t];
+  tr.targets = tr.targets.includes(slot) ? tr.targets.filter((x) => x !== slot) : [...tr.targets, slot].sort();
+  seqEdit(); renderSeq(); renderPatch();
+  status(`${tr.name} ${tr.targets.includes(slot) ? "now plays" : "no longer plays"} slot ${slot + 1}.`);
+}
 function renderPatch() {
   const root = $("patch"); root.replaceChildren();
+  const tabs = h("div", { class: "segmented", role: "tablist", "aria-label": "Patch bay view" });
+  for (const [v, label] of [["list", "List"], ["graph", "Graph"]] as const) {
+    const b = h("button", { class: `seg ${ui.patchView === v ? "on" : ""}`, role: "tab", "aria-selected": String(ui.patchView === v) }, label);
+    b.addEventListener("click", () => { ui.patchView = v; renderPatch(); });
+    tabs.append(b);
+  }
+  root.append(h("div", { class: "row wrap" }, tabs));
+  if (ui.patchView === "graph") {
+    root.append(h("p", { class: "muted small" }, "Every source and destination as a node. Drag an output port onto a node to patch one of its knobs; drag a track's Notes port onto a synth to have the track play it. Drag nodes by their title; click a wire to change or remove it."));
+    renderGraph(patchCtx, root, routeTrack);
+    return;
+  }
   root.append(h("p", { class: "muted small" }, "Every sequencer track, LFO, macro and controller is a source; every knob in the rack is a destination. Tap a source, then tap a knob. A cable adds to the knob's position; the amount is how far it can turn it (negative turns it down)."));
   const used = new Set(state.cables.map((c) => c.src));
   const chip = (id: string, label: string) => { const c = h("button", { class: `chip ${used.has(id) ? "used" : ""} ${ui.armed === id ? "armed" : ""}`, "data-src": id, title: `Patch ${cableLabel(id)}` }, label); c.addEventListener("click", () => arm(id)); return c; };
@@ -627,6 +781,12 @@ function renderKeys() {
   kbd.addEventListener("pointerup", up); kbd.addEventListener("pointercancel", up);
   root.append(kbd);
   root.append(h("p", { class: "muted small" }, "Computer keys: A W S E D F T G Y H U J K play one octave, Z and X change octave. A MIDI keyboard plays too: ", midiControls()));
+  if (!bluetoothAvailable()) root.append(h("p", { class: "muted small" }, "Bluetooth MIDI: this browser can't connect to Bluetooth devices directly (Safari and Firefox don't). Pair the keyboard in your system settings instead (macOS: Audio MIDI Setup › MIDI Studio › Bluetooth; Windows: Settings › Bluetooth; Android: Bluetooth settings), then use Connect MIDI."));
+  const learnBtn = h("button", { class: `button small ${learn.on ? "primary" : ""}`, "aria-pressed": String(learn.on) }, learn.on ? "Stop MIDI learn" : "MIDI learn");
+  learnBtn.addEventListener("click", () => setLearn(!learn.on));
+  root.append(h("h3", {}, "MIDI learn"), h("p", { class: "muted small" }, "Map knobs and sliders on your MIDI device to any control in the rack. One hardware control can turn several knobs at once, each over its own range (set From above To to turn one down while another goes up)."),
+    h("div", { class: "row wrap" }, learnBtn), h("div", { id: "learnList", class: "mappings" }));
+  renderLearnList();
 }
 const KEYMAP = "awsedftgyhujkolp;";
 document.addEventListener("keydown", (e) => {
@@ -642,7 +802,17 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("keyup", (e) => { const i = KEYMAP.indexOf(e.key.toLowerCase()); const n = play.down.get(i); if (n !== undefined) { noteOff(n); play.down.delete(i); } });
 
 function midiControls() {
-  const span = h("span", {});
+  const span = h("span", { class: "midictl" });
+  // Bluetooth: direct connection where the browser has Web Bluetooth.
+  if (ble) {
+    const off = h("button", { class: "button small" }, `Disconnect ${ble.name}`);
+    off.addEventListener("click", () => { ble?.disconnect(); ble = null; renderKeys(); });
+    span.append(off, " ");
+  } else if (bluetoothAvailable()) {
+    const bt = h("button", { class: "button small", title: "Pair a Bluetooth MIDI keyboard or controller" }, "Connect Bluetooth MIDI");
+    bt.addEventListener("click", () => void connectBluetooth());
+    span.append(bt, " ");
+  }
   if (!("requestMIDIAccess" in navigator)) { span.textContent = "this browser doesn't offer Web MIDI."; return span; }
   if (!play.midi) {
     const b = h("button", { class: "button small" }, "Connect MIDI");
@@ -663,19 +833,98 @@ function hookMidi() {
   if (!play.midi) return;
   for (const input of play.midi.inputs.values()) input.onmidimessage = (e: MIDIMessageEvent) => {
     if (play.input && input.id !== play.input) return;
-    const d = e.data; if (!d || d.length < 2) return;
-    const kind = d[0] & 0xf0, ch = d[0] & 15, multi = play.channelMode === "channels";
-    // Multitimbral: the message's channel picks the slots. Otherwise it follows the keyboard's target.
-    const on = (n: number, v: number) => { if (multi) { void ensureAudio().then((ok) => ok && send({ type: "midi", channel: ch, note: n, vel: v, on: true })); } else noteOn(n, v); };
-    const off = (n: number) => { if (multi) send({ type: "midi", channel: ch, note: n, vel: 0, on: false }); else noteOff(n); };
-    if (kind === 0x90 && d[2] > 0) on(d[1], d[2] / 127);
-    else if (kind === 0x80 || kind === 0x90) off(d[1]);
-    else if (kind === 0xb0 && d[1] === 1) send({ type: "control", wheel: d[2] / 127 });
-    else if (kind === 0xe0) send({ type: "control", bend: (((d[2] << 7) | d[1]) - 8192) / 4096 });
-    else if (kind === 0xd0) send({ type: "control", press: d[1] / 127 });
-    else if (kind === 0xfa) { send({ type: "play" }); setPlaying(true); }
-    else if (kind === 0xfc) { send({ type: "stop" }); setPlaying(false); }
+    if (e.data) handleMidi(e.data);
   };
+}
+// Every MIDI message, from USB, the system's Bluetooth MIDI or a direct Bluetooth connection.
+function handleMidi(d: ArrayLike<number>) {
+  if (!d || d.length < 1) return;
+  const kind = d[0] & 0xf0, ch = d[0] & 15, multi = play.channelMode === "channels";
+  if (d[0] === 0xfa) { send({ type: "play" }); setPlaying(true); return; }
+  if (d[0] === 0xfc) { send({ type: "stop" }); setPlaying(false); return; }
+  if (d.length < 2) return;
+  // Multitimbral: the message's channel picks the slots. Otherwise it follows the keyboard's target.
+  const on = (n: number, v: number) => { if (multi) { void ensureAudio().then((ok) => ok && send({ type: "midi", channel: ch, note: n, vel: v, on: true })); } else noteOn(n, v); };
+  const off = (n: number) => { if (multi) send({ type: "midi", channel: ch, note: n, vel: 0, on: false }); else noteOff(n); };
+  if (kind === 0x90 && d[2] > 0) on(d[1], d[2] / 127);
+  else if (kind === 0x80 || kind === 0x90) off(d[1]);
+  else if (kind === 0xb0) controlChange(ch, d[1], d[2]);
+  else if (kind === 0xe0) send({ type: "control", bend: (((d[2] << 7) | d[1]) - 8192) / 4096 });
+  else if (kind === 0xd0) send({ type: "control", press: d[1] / 127 });
+}
+
+/* ---------------- MIDI learn: one hardware control can turn many knobs ---------------- */
+const learn = { on: false, target: null as string | null };
+const destDef = (key: string) => destinations(state).find((d) => d.id === key);
+const destUnit = (key: string): [string, string] => { const [u, id] = key.split(".") as [string, string]; return [u === "fx" || u === "mod" ? u : u.slice(1), id]; };
+function destLabel(key: string) { const d = destDef(key); return d ? `${d.group} · ${d.name}` : key; }
+function setLearn(on: boolean) {
+  learn.on = on; learn.target = null;
+  document.body.classList.toggle("learning", on);
+  const bar = $("armBar"); bar.hidden = !on;
+  if (on) {
+    disarm(); learn.on = true; document.body.classList.add("learning"); bar.hidden = false;
+    const done = h("button", { class: "button small" }, "Done");
+    done.addEventListener("click", () => setLearn(false));
+    bar.replaceChildren(h("span", { id: "learnMsg" }, "MIDI learn: click a knob, then move a control on your MIDI device. Map one control to several knobs by repeating."), done);
+    ui.open.add(ui.slot); renderRack();
+  }
+  markPatched(); renderKeys();
+}
+function learnPick(key: string) {
+  learn.target = key; markPatched();
+  const msg = document.getElementById("learnMsg");
+  if (msg) msg.textContent = `Now move a control on your MIDI device for ${destLabel(key)}.`;
+}
+function controlChange(ch: number, cc: number, value: number) {
+  if (learn.on && learn.target) {
+    const dst = learn.target;
+    if (!state.midiMap.some((m) => m.cc === cc && m.dst === dst)) state.midiMap.push({ ch: ch + 1, cc, dst, min: 0, max: 1 });
+    learn.target = null; persist(); markPatched(); renderLearnList();
+    const msg = document.getElementById("learnMsg");
+    if (msg) msg.textContent = `CC ${cc} on channel ${ch + 1} now turns ${destLabel(dst)}. Click another knob to map more, or Done.`;
+  }
+  if (cc === 1) send({ type: "control", wheel: value / 127 });
+  for (const m of state.midiMap) {
+    if (m.cc !== cc || (m.ch !== 0 && m.ch !== ch + 1)) continue;
+    const d = destDef(m.dst);
+    if (!d) continue;
+    const v = fromNorm(d.def, m.min + (m.max - m.min) * (value / 127));
+    const [unit, id] = destUnit(m.dst);
+    setParam(unit, id, v);
+    knobRegistry.get(m.dst)?.set(v);
+  }
+}
+function renderLearnList() {
+  const box = document.getElementById("learnList");
+  if (!box) return;
+  box.replaceChildren();
+  if (!state.midiMap.length) { box.append(h("p", { class: "muted small" }, "No MIDI mappings yet.")); return; }
+  state.midiMap.forEach((m, i) => {
+    const range = (which: "min" | "max") => {
+      const r = h("input", { type: "range", min: 0, max: 1, step: 0.01, value: String(m[which]), "aria-label": which === "min" ? "Knob position at the control's minimum" : "Knob position at the control's maximum" });
+      const o = h("output", {}, `${Math.round(m[which] * 100)}%`);
+      r.addEventListener("input", () => { m[which] = Number(r.value); o.textContent = `${Math.round(m[which] * 100)}%`; persist(); });
+      return h("label", { class: "inline" }, which === "min" ? "From" : "To", r, o);
+    };
+    const chSel = select([{ value: "0", label: "Any channel" }, ...Array.from({ length: 16 }, (_, k) => ({ value: String(k + 1), label: `Channel ${k + 1}` }))], String(m.ch), (v) => { m.ch = Number(v); persist(); }, "MIDI channel");
+    const del = h("button", { class: "mini", title: "Remove mapping", "aria-label": "Remove mapping" }, "✕");
+    del.addEventListener("click", () => { state.midiMap.splice(i, 1); persist(); markPatched(); renderLearnList(); });
+    box.append(h("div", { class: "mapping" }, h("strong", { class: "cc" }, `CC ${m.cc}`), chSel, h("span", { class: "arrow" }, "→"), h("span", { class: "dst" }, destLabel(m.dst)), range("min"), range("max"), del));
+  });
+}
+
+/* ---------------- Bluetooth MIDI ---------------- */
+let ble: { name: string; disconnect: () => void } | null = null;
+async function connectBluetooth() {
+  try {
+    ble = await connectBleMidi(handleMidi, () => { status(`${ble?.name ?? "Bluetooth MIDI"} disconnected.`); ble = null; renderKeys(); });
+    status(`Connected to ${ble.name} over Bluetooth.`);
+    renderKeys();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/cancel/i.test(msg)) showError(`Couldn't connect over Bluetooth: ${msg}`);
+  }
 }
 
 /* =========================================================================
@@ -847,9 +1096,22 @@ engineSel.addEventListener("change", () => {
 });
 engineNote();
 
+document.addEventListener("keydown", (e) => {
+  const t = e.target as HTMLElement;
+  if (!(e.metaKey || e.ctrlKey) || t.closest("input[type=text], input[type=number], textarea")) return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); redo(); }
+});
+$("undo").addEventListener("click", undo);
+$("redo").addEventListener("click", redo);
+
 /* ========================================================================= */
 function renderAll() { nameIn.value = state.name; syncTransport(); renderRack(); renderSeq(); renderPatch(); renderKeys(); renderProjectBox(); }
 renderAll();
+history.last = snap(); syncUndo(); renderAutosaves();
+// For automated tests and debugging: feed raw MIDI bytes as if from a device.
+(globalThis as unknown as { soundlab?: unknown }).soundlab = { midi: (bytes: number[]) => handleMidi(bytes) };
 let lastWidth = window.innerWidth;
 window.addEventListener("resize", () => { if ((window.innerWidth < 600) !== (lastWidth < 600)) renderKeys(); lastWidth = window.innerWidth; });
 if ("serviceWorker" in navigator && location.protocol === "https:" && !claudeHost)

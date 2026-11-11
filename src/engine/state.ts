@@ -29,6 +29,7 @@ export type Step = {
   slide: boolean; // glide into the next note without retriggering
   accent: boolean;
   chord: number; // index into CHORDS
+  more: number[]; // further notes played with this one (piano-roll chords), up to 8
   a: number | null; // CV lane A value 0..1, or null to hold the last value
   b: number | null; // CV lane B
 };
@@ -47,7 +48,11 @@ export type SynthState = {
   fx: Record<string, number>;
   mod: Record<string, number>;
   cables: Cable[];
+  midiMap: MidiMapping[];
 };
+// MIDI learn: a hardware control (CC on a channel) turning a knob between min and max
+// (0..1 of its travel; max below min inverts it). One CC can drive many knobs.
+export type MidiMapping = { ch: number; cc: number; dst: string; min: number; max: number }; // ch 0 = any channel
 
 /* ---------------- The two non-instrument units: FX and Mod ---------------- */
 export const DELAY_TIMES = [
@@ -109,6 +114,8 @@ export function sources(state: SynthState): Source[] {
   out.push({ id: "in.wheel", name: "Mod wheel", group: "Controller", bipolar: false });
   out.push({ id: "in.vel", name: "Keyboard velocity", group: "Controller", bipolar: false });
   out.push({ id: "in.press", name: "Aftertouch", group: "Controller", bipolar: false });
+  // Each slot's output level, for sidechaining (a kick ducking a pad, a bass gating a lead).
+  state.slots.forEach((s, i) => { const m = machineById(s.machine); if (m) out.push({ id: `s${i}.follow`, name: `${i + 1} · ${m.name} · Output level`, group: "Audio followers (sidechain)", bipolar: false }); });
   return out;
 }
 export type Destination = { id: string; name: string; group: string; def: ParamDef };
@@ -125,7 +132,7 @@ export function destinations(state: SynthState): Destination[] {
 }
 
 /* ---------------- Defaults ---------------- */
-export const emptyStep = (note = 60): Step => ({ on: false, note, vel: 0.8, len: 1, prob: 1, ratchet: 1, slide: false, accent: false, chord: 0, a: null, b: null });
+export const emptyStep = (note = 60): Step => ({ on: false, note, vel: 0.8, len: 1, prob: 1, ratchet: 1, slide: false, accent: false, chord: 0, more: [], a: null, b: null });
 export const emptyTrack = (i: number, targets: number[] = [], note = 60): Track => ({
   name: `Track ${i + 1}`, targets, note, length: 16, division: 3, mute: false, steps: Array.from({ length: MAX_STEPS }, () => emptyStep(note)),
 });
@@ -216,6 +223,7 @@ export function demoState(): SynthState {
       { src: "t0.env", dst: "s2.level", amt: -0.35 }, // the kick ducks the chords (sidechain pump)
       { src: "lfo1", dst: "s2.cutoff", amt: 0.12 },
     ],
+    midiMap: [],
   };
 }
 
@@ -233,7 +241,8 @@ function cleanStep(raw: unknown): Step {
   const s = obj(raw), cv = (x: unknown) => (x === null || x === undefined ? null : num(x, 0, 1, 0.5));
   return {
     on: s.on === true, note: int(s.note, 0, 127, 60), vel: num(s.vel, 0, 1, 0.8), len: num(s.len, 0.05, 64, 1), prob: num(s.prob, 0, 1, 1),
-    ratchet: int(s.ratchet, 1, 4, 1), slide: s.slide === true, accent: s.accent === true, chord: int(s.chord, 0, CHORDS.length - 1, 0), a: cv(s.a), b: cv(s.b),
+    ratchet: int(s.ratchet, 1, 4, 1), slide: s.slide === true, accent: s.accent === true, chord: int(s.chord, 0, CHORDS.length - 1, 0),
+    more: Array.isArray(s.more) ? [...new Set(s.more.filter((n) => Number.isInteger(n) && n >= 0 && n <= 127) as number[])].slice(0, 8) : [], a: cv(s.a), b: cv(s.b),
   };
 }
 function cleanTrack(raw: unknown, i: number): Track {
@@ -264,18 +273,21 @@ export function sanitizeState(raw: unknown): SynthState {
   });
   const state: SynthState = {
     schema: STATE_SCHEMA, name: str(s.name, 80, "Untitled"), bpm: num(s.bpm, 30, 300, 120), swing: num(s.swing, 0, 0.5, 0),
-    pattern: int(s.pattern, 0, PATTERNS - 1, 0), patterns, slots, fx: cleanParams(FX_PARAMS, s.fx), mod: cleanParams(MOD_PARAMS, s.mod), cables: [],
+    pattern: int(s.pattern, 0, PATTERNS - 1, 0), patterns, slots, fx: cleanParams(FX_PARAMS, s.fx), mod: cleanParams(MOD_PARAMS, s.mod), cables: [], midiMap: [],
   };
   const srcIds = new Set(sources(state).map((x) => x.id)), dstIds = new Set(destinations(state).map((x) => x.id));
   state.cables = (Array.isArray(s.cables) ? s.cables : []).slice(0, 64).map(obj)
     .filter((c) => srcIds.has(c.src as string) && dstIds.has(c.dst as string))
     .map((c) => ({ src: c.src as string, dst: c.dst as string, amt: num(c.amt, -1, 1, 0) }));
+  state.midiMap = (Array.isArray(s.midiMap) ? s.midiMap : []).slice(0, 128).map(obj)
+    .filter((x) => dstIds.has(x.dst as string))
+    .map((x) => ({ ch: int(x.ch, 0, 16, 0), cc: int(x.cc, 0, 127, 1), dst: x.dst as string, min: num(x.min, 0, 1, 0), max: num(x.max, 0, 1, 1) }));
   return state;
 }
 // For saving: steps that are off and carry no CV become null (sanitizeState
 // restores them), which keeps a full eight-pattern session small.
 export function compactState(s: SynthState): unknown {
-  const isBlank = (st: Step, note: number) => !st.on && st.a === null && st.b === null && st.note === note && st.vel === 0.8 && st.len === 1 && st.prob === 1 && st.ratchet === 1 && !st.slide && !st.accent && st.chord === 0;
+  const isBlank = (st: Step, note: number) => !st.on && st.a === null && st.b === null && st.note === note && st.vel === 0.8 && st.len === 1 && st.prob === 1 && st.ratchet === 1 && !st.slide && !st.accent && st.chord === 0 && st.more.length === 0;
   return { ...s, patterns: s.patterns.map((p) => ({ tracks: p.tracks.map((t) => {
     const steps = t.steps.map((st) => (isBlank(st, t.note) ? null : st));
     while (steps.length && steps[steps.length - 1] === null) steps.pop();

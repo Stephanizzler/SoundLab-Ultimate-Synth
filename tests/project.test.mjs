@@ -60,6 +60,10 @@ assert.equal(imp.dropped, 0);
 const drums = song.tracks.find((t) => t.name === "Kick");
 assert.equal(drums.channel, 9, "drum tracks export on MIDI channel 10");
 assert.throws(() => midiToTrack(new Uint8Array([1, 2, 3]), empty), /not a MIDI file/);
+// Chords in a MIDI file become a step's extra notes.
+const chordy = demoState(); chordy.patterns[0].tracks[0].steps[0].more = [43, 48];
+const chordTrack = midiToTrack(patternToMidi(chordy, 1), emptyTrack(7, [0], 36), { part: 0, bpm: 124 }).track;
+assert.equal(chordTrack.steps[0].note, 36); assert.deepEqual(chordTrack.steps[0].more, [43, 48]);
 const silent = demoState(); silent.patterns[0].tracks.forEach((t) => t.steps.forEach((s) => (s.on = false)));
 assert.throws(() => patternToMidi(silent, 1), /no notes/);
 

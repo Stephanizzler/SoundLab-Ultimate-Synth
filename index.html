@@ -28,12 +28,23 @@
     <label class="swing">Swing <input type="range" id="swing" min="0" max="0.5" step="0.01" /><output id="swingOut"></output></label>
     <div class="patterns" id="patterns" role="radiogroup" aria-label="Pattern"></div>
     <div class="meter" id="meter" aria-label="Output level" title="Output peak level"><i id="mL"></i><i id="mR"></i></div>
+    <button id="undo" class="button small" title="Undo (Ctrl or ⌘ + Z)" disabled>↶ Undo</button>
+    <button id="redo" class="button small" title="Redo (Ctrl or ⌘ + Shift + Z)" disabled>↷ Redo</button>
     <button id="panic" class="button small" title="Stop every sounding note">All off</button>
   </div>
-  <p id="audioNote" class="muted small audio-note">Press Play or a key to start the sound.</p>
+  <p class="muted small audio-note"><span id="audioNote">Press Play or a key to start the sound.</span> <span id="saved"></span></p>
 </div>
 
 <main>
+  <section class="panel" id="scopePanel">
+    <h2>Output <span class="muted small" id="scopeReadout"></span></h2>
+    <div class="scopes">
+      <figure><canvas id="scope" aria-label="Oscilloscope of the output"></canvas><figcaption>Scope</figcaption></figure>
+      <figure><canvas id="spectrum" aria-label="Spectrum analyser of the output, 20 Hz to 20 kHz"></canvas><figcaption>Spectrum · 20 Hz – 20 kHz · peak hold</figcaption></figure>
+    </div>
+    <p class="muted small" id="scopeNote">Starts with the sound (press Play or a key).</p>
+  </section>
+
   <section class="panel" id="rackPanel">
     <h2>1 · Rack</h2>
     <p class="muted small">Eight slots. Load any machine into a slot; each is modelled on the architecture of a classic instrument. Open a slot to see its knobs.</p>
@@ -43,6 +54,11 @@
   <section class="panel" id="seqPanel">
     <h2>2 · Sequencer</h2>
     <div id="seq"></div>
+  </section>
+
+  <section class="panel" id="rollPanel">
+    <h2>Piano roll</h2>
+    <div id="pianoroll"></div>
   </section>
 
   <section class="panel" id="patchPanel">
@@ -61,6 +77,7 @@
       <label>Session name <input type="text" id="name" maxlength="80" /></label>
       <label class="button">Open…<input type="file" id="open" accept=".soundlab,.json,.mid,.midi" hidden /></label>
       <button class="button" id="newSession">New empty session</button>
+      <span id="autosaves"></span>
       <label>Sound engine <select id="engine"><option value="native">C++ (WebAssembly)</option><option value="ts">TypeScript</option></select></label>
       <button class="button" id="demo">Load demo</button>
     </div>

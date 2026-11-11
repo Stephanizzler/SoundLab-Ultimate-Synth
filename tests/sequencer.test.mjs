@@ -95,7 +95,7 @@ function run(s, seconds, before) {
   // Every listed source and destination can be patched without error.
   const all = setup(); all.slots[2] = slotState("fm-six");
   const srcs = sources(all), dsts = destinations(all);
-  assert.ok(srcs.length === 8 * 7 + 11 && dsts.length > 80, `${srcs.length} sources, ${dsts.length} destinations`);
+  assert.ok(srcs.length === 8 * 7 + 11 + 3 && dsts.length > 80, `${srcs.length} sources (with an output follower per filled slot), ${dsts.length} destinations`);
   all.cables = srcs.map((x, i) => ({ src: x.id, dst: dsts[(i * 7) % dsts.length].id, amt: (i % 3) - 1 }));
   const r = renderOffline(all, rate, 1);
   assert.ok(finite(r.L) && peak(r.L) <= 1, "patched everywhere, still finite and limited");
