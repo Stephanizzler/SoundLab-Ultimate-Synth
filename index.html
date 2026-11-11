@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SoundLab Ultimate Synth</title>
+<meta name="description" content="Sixteen classic synths and drum machines in one rack, played by a step sequencer you can patch to anything. Runs in your browser; nothing is uploaded." />
+<meta name="theme-color" content="#0D0F12" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" href="./icon-192.png" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ultimate Synth" />
+  <script type="module" crossorigin src="./assets/index-B4R5iOtn.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BmC8kVlc.css">
+</head>
+<body>
+<header class="top">
+  <div class="toprow"><h1>SOUND<b>LAB</b> <span>Ultimate Synth</span></h1><button id="settingsBtn" class="cog" title="Settings and the how-to video" aria-label="Settings" aria-haspopup="dialog">⚙</button></div>
+  <p class="muted">Sixteen classic synths and drum machines in one rack, played by a step sequencer you can patch to any knob. Everything runs on this device; nothing is uploaded.</p>
+</header>
+
+<dialog id="settings" class="settings" aria-labelledby="settingsTitle">
+  <div class="shead"><h2 id="settingsTitle">Settings</h2><button class="mini" id="settingsClose" aria-label="Close settings">✕</button></div>
+  <section id="howto">
+    <h3>How to use Ultimate Synth</h3>
+    <div class="vidbox"><video id="tutorial" controls playsinline preload="none" poster=""></video></div>
+    <p class="muted small" id="tutorialNote">A two-minute tour: the rack, presets, the sequencer and piano roll, patching cables, playing from a keyboard, and saving. Captions are on; turn them off in the player.</p>
+    <label class="check"><input type="checkbox" id="introOnLaunch" /> Show this video when the app opens</label>
+  </section>
+  <section>
+    <h3>Sound engine</h3>
+    <label>Engine <select id="engine"><option value="native">C++ (WebAssembly)</option><option value="ts">TypeScript</option></select></label>
+    <p class="muted small" id="engineNote"></p>
+  </section>
+  <div class="row"><button class="button primary" id="settingsDone">Done</button></div>
+</dialog>
+
+<div class="transport" id="transport" role="toolbar" aria-label="Transport">
+  <div class="tin">
+    <button id="play" class="button primary" aria-pressed="false">▶ Play</button>
+    <button id="rec" class="button rec" aria-pressed="false" title="Record audio and/or MIDI of everything you play">● Rec</button>
+    <span id="recTime" class="rectime" hidden aria-live="off"></span>
+    <label class="tempo">Tempo <input type="number" id="bpm" min="30" max="300" step="0.1" /></label>
+    <label class="swing">Swing <input type="range" id="swing" min="0" max="0.5" step="0.01" /><output id="swingOut"></output></label>
+    <div class="patterns" id="patterns" role="radiogroup" aria-label="Pattern"></div>
+    <div class="meter" id="meter" aria-label="Output level" title="Output peak level"><i id="mL"></i><i id="mR"></i></div>
+    <button id="undo" class="button small" title="Undo (Ctrl or ⌘ + Z)" disabled>↶ Undo</button>
+    <button id="redo" class="button small" title="Redo (Ctrl or ⌘ + Shift + Z)" disabled>↷ Redo</button>
+    <button id="panic" class="button small" title="Stop every sounding note">All off</button>
+  </div>
+  <p class="muted small audio-note"><span id="audioNote">Press Play or a key to start the sound.</span> <span id="saved"></span></p>
+</div>
+
+<main>
+  <section class="panel" id="scopePanel">
+    <h2>Output <span class="muted small" id="scopeReadout"></span></h2>
+    <div class="scopes">
+      <figure><canvas id="scope" aria-label="Oscilloscope of the output"></canvas><figcaption>Scope</figcaption></figure>
+      <figure><canvas id="spectrum" aria-label="Spectrum analyser of the output, 20 Hz to 20 kHz"></canvas><figcaption>Spectrum · 20 Hz – 20 kHz · peak hold</figcaption></figure>
+    </div>
+    <p class="muted small" id="scopeNote">Starts with the sound (press Play or a key).</p>
+  </section>
+
+  <section class="panel" id="rackPanel">
+    <h2>1 · Rack</h2>
+    <p class="muted small">Eight slots. Load any machine into a slot; each is modelled on the architecture of a classic instrument. Open a slot to see its knobs.</p>
+    <div id="rack" class="rack"></div>
+  </section>
+
+  <section class="panel" id="mixerPanel">
+    <h2>Mixer</h2>
+    <div id="mixer"></div>
+  </section>
+
+  <section class="panel" id="seqPanel">
+    <h2>2 · Sequencer</h2>
+    <div id="seq"></div>
+  </section>
+
+  <section class="panel" id="rollPanel">
+    <h2>Piano roll</h2>
+    <div id="pianoroll"></div>
+  </section>
+
+  <section class="panel" id="patchPanel">
+    <h2>3 · Patch bay</h2>
+    <div id="patch"></div>
+  </section>
+
+  <section class="panel" id="playPanel">
+    <h2>4 · Play</h2>
+    <div id="keys"></div>
+  </section>
+
+  <section class="panel" id="recPanel">
+    <h2>Recordings</h2>
+    <div id="recordings"></div>
+  </section>
+
+  <section class="panel" id="filePanel">
+    <h2>5 · Render &amp; save</h2>
+    <div class="row wrap">
+      <label>Session name <input type="text" id="name" maxlength="80" /></label>
+      <label class="button">Open…<input type="file" id="open" accept=".soundlab,.json,.mid,.midi" hidden /></label>
+      <button class="button" id="newSession">New empty session</button>
+      <span id="autosaves"></span>
+      <button class="button" id="demo">Load demo</button>
+    </div>
+    <p class="muted small">Open a <strong>.soundlab</strong> project (to save into it or reopen a patch saved in it), a <strong>.json</strong> patch, or a <strong>.mid</strong> file (it goes onto the selected sequencer track).</p>
+    <div id="projectBox" class="notice" hidden></div>
+    <h3>Render</h3>
+    <div class="row wrap">
+      <label>Length <select id="bars"><option value="1">1 bar</option><option value="2">2 bars</option><option value="4" selected>4 bars</option><option value="8">8 bars</option><option value="16">16 bars</option><option value="32">32 bars</option></select></label>
+      <label>Sample rate <select id="rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="96000">96 kHz</option></select></label>
+      <label>Tail <select id="tail"><option value="0">None (loops cleanly)</option><option value="2" selected>2 s</option><option value="4">4 s</option></select></label>
+      <label class="check"><input type="checkbox" id="stems" /> Stems (one file per slot)</label>
+    </div>
+    <div class="row wrap">
+      <button class="button primary" id="render">Render</button>
+      <progress id="progress" max="1" value="0" hidden></progress>
+      <span id="status" class="muted small" aria-live="polite"></span>
+    </div>
+    <div id="result" hidden>
+      <dl id="readouts" class="readouts"></dl>
+      <audio id="player" controls></audio>
+      <div class="row wrap">
+        <button class="button" id="dlWav">Download WAV</button>
+        <button class="button" id="dlMidi">Download MIDI</button>
+        <button class="button" id="dlPatch">Download patch (.json)</button>
+        <button class="button primary" id="saveProject">Save to .soundlab project</button>
+      </div>
+      <p class="muted small" id="saveHint"></p>
+    </div>
+    <p id="error" class="notice bad" role="alert" hidden></p>
+  </section>
+</main>
+<div id="armBar" class="armbar" hidden role="status"></div>
+<footer class="muted small">SoundLab Ultimate Synth 0.5 · The machines are original models of classic designs with SoundLab's own names and faceplates. The products they are modelled on are their owners' trademarks, named only to say what each model is based on; SoundLab is not affiliated with or endorsed by their makers.</footer>
+</body>
+</html>
