@@ -101,7 +101,11 @@ export abstract class Voice {
   choke(_note: number) {}
 }
 
-export type Preset = { name: string; values: Record<string, number> };
+// What a preset is for: the preset menu groups by it, Audition plays a phrase
+// suited to it, and calibration sets each preset's level for it.
+export const PRESET_ROLES = ["bass", "lead", "pad", "strings", "brass", "keys", "organ", "pluck", "bell", "fx", "kit"] as const;
+export type PresetRole = (typeof PRESET_ROLES)[number];
+export type Preset = { name: string; role?: PresetRole; values: Record<string, number> };
 
 // Stereo processing after a machine's voices, such as the Juno's chorus.
 export interface SlotFx { process(L: Float32Array, R: Float32Array, n: number, p: Float64Array): void }
@@ -127,6 +131,9 @@ export type MachineDef = {
 // Mixer and part controls every slot has, after the machine's own. The part
 // controls make the rack multitimbral: each slot listens on its own MIDI
 // channel and key range, so slots can be split across the keyboard or layered.
+// Each preset's own output level, set by calibration (tools/calibrate-presets.mjs)
+// so presets sit at similar loudness. It changes with the preset, unlike the mixer.
+export const PATCH_LEVEL: ParamDef = { id: "patchLevel", name: "Patch level", min: -30, max: 18, def: 0, unit: "dB", group: "Slot output" };
 export const MIXER_PARAMS: ParamDef[] = [
   { id: "channel", name: "MIDI channel", min: 0, max: 16, def: 0, options: ["Omni", ...Array.from({ length: 16 }, (_, i) => String(i + 1))], group: "Part" },
   { id: "keyLo", name: "Lowest key", min: 0, max: 127, def: 0, step: 1, unit: "note", group: "Part" },

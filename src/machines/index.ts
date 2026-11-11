@@ -22,3 +22,10 @@ export const MACHINES: MachineDef[] = [
 ];
 export const machineById = (id: string) => MACHINES.find((m) => m.id === id);
 export { drumName } from "./drums.ts";
+
+// Each preset's calibrated patch level (tools/calibrate-presets.mjs).
+import { PRESET_TRIMS } from "./preset-trims.ts";
+for (const m of MACHINES) for (const p of m.presets) {
+  const t = PRESET_TRIMS[m.id]?.[p.name];
+  if (t !== undefined && p.values.patchLevel === undefined) p.values = { ...p.values, patchLevel: t };
+}

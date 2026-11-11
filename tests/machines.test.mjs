@@ -27,7 +27,7 @@ assert.equal(MACHINES.length, 16);
 assert.equal(new Set(MACHINES.map((m) => m.id)).size, 16, "machine ids are unique");
 for (const m of MACHINES) {
   assert.ok(m.presets.length >= 3, `${m.name} has presets`);
-  for (const pr of m.presets) for (const k of Object.keys(pr.values)) assert.ok(m.params.some((d) => d.id === k), `${m.name} preset ${pr.name} sets unknown ${k}`);
+  for (const pr of m.presets) for (const k of Object.keys(pr.values)) assert.ok(slotParamDefs(m.id).some((d) => d.id === k), `${m.name} preset ${pr.name} sets unknown ${k}`);
   for (const d of m.params) assert.ok(d.def >= d.min && d.def <= d.max && (!d.options || d.options.length === d.max - d.min + 1), `${m.name} ${d.id} range`);
   for (const d of m.params) assert.ok(d.group && !["Slot output", "Part"].includes(d.group), `${m.name} ${d.id} sits in its own panel section`);
 

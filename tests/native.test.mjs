@@ -50,4 +50,4 @@ const time = (native) => { const t0 = performance.now(); for (let k = 0; k < 10;
 time(true); time(false);
 const tTs = time(false), tWasm = time(true);
 setNativeEnabled(true);
-console.log(`native engine tests passed (8 presets + every switch, bit-identical; MiniMood render ${tTs.toFixed(0)} ms in TypeScript, ${tWasm.toFixed(0)} ms in C++/WebAssembly)`);
+console.log(`native engine tests passed (${minimoog.presets.length} presets + every switch, bit-identical; MiniMood render ${tTs.toFixed(0)} ms in TypeScript, ${tWasm.toFixed(0)} ms in C++/WebAssembly)`);

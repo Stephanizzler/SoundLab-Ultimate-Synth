@@ -194,10 +194,12 @@ export const tr808: MachineDef = {
   createVoice: (rate, i) => new DrumVoice(rate, i + 141, false),
   drums: kitList(KIT808),
   presets: [
-    { name: "Classic 808", values: {} },
-    { name: "Long sub kick", values: { bdTune: 42, bdDecay: 2.4, bdTone: 0.15 } },
-    { name: "Tight and snappy", values: { bdDecay: 0.35, sdSnappy: 0.9, sdTone: 0.7, ohDecay: 0.25 } },
-    { name: "Latin percussion", values: { ltLevel: 0.9, mtLevel: 0.9, htLevel: 0.9, cbLevel: 0.8, rsLevel: 0.9, cpLevel: 0.9, ltTune: 2, mtTune: 2, htTune: 2 } },
+    { name: "Classic 808", role: "kit", values: {} },
+    { name: "Long sub kick", role: "kit", values: { bdTune: 42, bdDecay: 2.4, bdTone: 0.15 } },
+    { name: "Tight and snappy", role: "kit", values: { bdDecay: 0.35, sdSnappy: 0.9, sdTone: 0.7, ohDecay: 0.25 } },
+    { name: "Latin percussion", role: "kit", values: { ltLevel: 0.9, mtLevel: 0.9, htLevel: 0.9, cbLevel: 0.8, rsLevel: 0.9, cpLevel: 0.9, ltTune: 2, mtTune: 2, htTune: 2 } },
+    { name: "Hip-hop boom", role: "kit", values: { bdTune: 45, bdDecay: 1.8, bdTone: 0.3, sdTone: 0.3, sdSnappy: 0.4, cpLevel: 1 } },
+    { name: "Electro", role: "kit", values: { bdDecay: 0.6, bdTone: 0.6, sdSnappy: 1, sdTone: 0.8, chLevel: 0.8, ohDecay: 0.2, cbLevel: 0.7 } },
   ],
 };
 export const tr909: MachineDef = {
@@ -207,10 +209,12 @@ export const tr909: MachineDef = {
   createVoice: (rate, i) => new DrumVoice(rate, i + 151, true),
   drums: kitList(KIT909),
   presets: [
-    { name: "Club punch", values: {} },
-    { name: "Hard techno", values: { bdTune: 0.3, bdDecay: 0.6, bdAttack: 0.9, chDecay: 0.04, accent: 0.8 } },
-    { name: "Soft house", values: { bdDecay: 0.35, bdAttack: 0.3, sdSnappy: 0.4, cpLevel: 0.9 } },
-    { name: "Booming toms", values: { ltDecay: 1.1, mtDecay: 0.9, htDecay: 0.8, ltTune: -3, mtTune: -3, htTune: -3 } },
+    { name: "Club punch", role: "kit", values: {} },
+    { name: "Hard techno", role: "kit", values: { bdTune: 0.3, bdDecay: 0.6, bdAttack: 0.9, chDecay: 0.04, accent: 0.8 } },
+    { name: "Soft house", role: "kit", values: { bdDecay: 0.35, bdAttack: 0.3, sdSnappy: 0.4, cpLevel: 0.9 } },
+    { name: "Booming toms", role: "kit", values: { ltDecay: 1.1, mtDecay: 0.9, htDecay: 0.8, ltTune: -3, mtTune: -3, htTune: -3 } },
+    { name: "Garage swing", role: "kit", values: { bdDecay: 0.3, sdTune: 2, sdSnappy: 0.8, chDecay: 0.07, ohDecay: 0.3, rdLevel: 0.7 } },
+    { name: "Industrial", role: "kit", values: { bdTune: 0.15, bdDecay: 0.9, bdAttack: 1, sdTune: -3, sdSnappy: 1, sdTone: 0.9, accent: 1 } },
   ],
 };
 export const drumName = (m: MachineDef, note: number) => m.drums?.find((d) => d.note === note)?.name ?? (KIT808[note] ?? KIT909[note])?.name;

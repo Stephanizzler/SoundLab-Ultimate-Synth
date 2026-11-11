@@ -1,7 +1,7 @@
 import { color } from "../core/design.ts";
 import { readBundle, writeBundle, problems, owner, BUNDLE_MIME, type Project, type Loudness } from "../core/index.ts";
 import { MACHINES, machineById, drumName } from "../machines/index.ts";
-import { MIXER_PARAMS, formatParam, fromNorm, type MachineDef, type ParamDef } from "../engine/machine.ts";
+import { MIXER_PARAMS, PATCH_LEVEL, PRESET_ROLES, formatParam, fromNorm, type MachineDef, type ParamDef } from "../engine/machine.ts";
 import { faceOf } from "./faces.ts";
 import {
   CHORDS, DIVISIONS, FX_PARAMS, MOD_PARAMS, PATTERNS, SLOTS, TRACKS, MAX_STEPS, TRACK_OUTPUTS,
@@ -27,6 +27,7 @@ import { startScopes } from "./scope.ts";
 import { connectBleMidi, bluetoothAvailable } from "./blemidi.ts";
 import { renderRackBack } from "./rackback.ts";
 import { renderGraph } from "./graph.ts";
+import { PHRASES, ROLE_LABELS } from "../engine/audition.ts";
 import { renderPianoRoll } from "./pianoroll.ts";
 import type { PatchCtx } from "./cables.ts";
 import WORKLET from "./worklet.ts?worklet";
@@ -284,11 +285,13 @@ function slotUnit(i: number) {
   const toggle = h("button", { class: "mini", "aria-expanded": String(open), title: open ? "Close panel" : "Open panel", disabled: !m }, open ? "▾" : "▸");
   toggle.addEventListener("click", () => { if (ui.open.has(i)) ui.open.delete(i); else ui.open.add(i); renderRack(); });
   const machineSel = select(machineOptions, s.machine, (v) => changeMachine(i, v), `Slot ${i + 1} machine`); machineSel.classList.add("machine");
-  const presetSel = m ? select(m.presets.map((p) => ({ value: p.name, label: p.name })).concat(m.presets.some((p) => p.name === s.preset) ? [] : [{ value: s.preset, label: s.preset || "Custom" }]), s.preset, (v) => applyPreset(i, v), `Slot ${i + 1} preset`) : null;
+  const presetSel = m ? select(PRESET_ROLES.flatMap((r) => m.presets.filter((p) => (p.role ?? "lead") === r).map((p): { value: string; label: string; group?: string } => ({ value: p.name, label: p.name, group: ROLE_LABELS[r] }))).concat(m.presets.some((p) => p.name === s.preset) ? [] : [{ value: s.preset, label: s.preset || "Custom" }]), s.preset, (v) => applyPreset(i, v), `Slot ${i + 1} preset`) : null;
   presetSel?.classList.add("preset");
+  const audition = h("button", { class: "mini", title: "Audition: play a short phrase suited to this preset", disabled: !m, "aria-label": `Audition slot ${i + 1}` }, "▶");
+  audition.addEventListener("click", () => auditionSlot(i));
   const swatch = m ? h("span", { class: "swatch", "aria-hidden": "true" }) : null;
   if (swatch && m) swatch.style.background = faceOf(m.id).v["--fp-bg"];
-  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), swatch, machineSel, presetSel, m ? partBadge(s.params) : null, mute, solo, playHere, toggle);
+  const head = h("div", { class: "uhead" }, h("span", { class: "lamp", id: `lamp${i}`, title: "Sounding" }), h("span", { class: "num" }, String(i + 1)), swatch, machineSel, presetSel, audition, m ? partBadge(s.params) : null, mute, solo, playHere, toggle);
   const unit = h("div", { class: `unit ${ui.slot === i ? "sel" : ""}`, id: `slot${i}` }, head);
   if (open && m) unit.append(faceplate(i, m, s.preset, s.params));
   return unit;
@@ -304,7 +307,7 @@ function faceplate(i: number, m: MachineDef, preset: string, values: Record<stri
   const screw = () => (f.screws ? h("span", { class: "screw", "aria-hidden": "true" }) : null);
   body.append(h("div", { class: "plate" }, screw(), h("div", { class: "brandbox" }, h("span", { class: "brand" }, m.name), h("span", { class: "tag" }, f.tagline)), display, screw()));
   body.append(h("p", { class: "about" }, h("strong", {}, `Modelled on the ${m.inspiredBy}. `), m.about, " ", h("em", {}, "Not affiliated with or endorsed by the original's maker.")));
-  const grid = controlsFor(String(i), `s${i}`, [...m.params, ...MIXER_PARAMS], values, f.look);
+  const grid = controlsFor(String(i), `s${i}`, [...m.params, PATCH_LEVEL, ...MIXER_PARAMS], values, f.look);
   let k = 0;
   grid.querySelectorAll<HTMLFieldSetElement>("fieldset.grp").forEach((fs) => {
     const g = fs.querySelector("legend")?.textContent ?? "";
@@ -345,6 +348,24 @@ function changeMachine(i: number, id: string) {
   if (id) { ui.open.add(i); ui.slot = i; }
   // Tracks that played this slot keep playing it; drum kits get drum notes on empty tracks.
   commit(); renderAll();
+}
+// Plays a phrase suited to the slot's preset (a bass line, a pad chord, a beat ...).
+let auditionTimers: number[] = [], auditionStop = () => {};
+function auditionSlot(i: number) {
+  const s = state.slots[i], m = machineById(s.machine);
+  if (!m) return;
+  for (const t of auditionTimers) clearTimeout(t);
+  auditionTimers = []; auditionStop();
+  const role = m.presets.find((p) => p.name === s.preset)?.role ?? (m.kind === "drum" ? "kit" : "lead"), ph = PHRASES[role];
+  void ensureAudio().then((ok) => {
+    if (!ok) return;
+    auditionStop = () => { for (const n of new Set(ph.notes.flat())) send({ type: "note", slot: i, note: n, vel: 0, on: false }); };
+    ph.notes.forEach((ns, k) => {
+      auditionTimers.push(window.setTimeout(() => { for (const n of ns) send({ type: "note", slot: i, note: n, vel: 0.85, on: true }); }, k * ph.gap * 1000));
+      auditionTimers.push(window.setTimeout(() => { for (const n of ns) send({ type: "note", slot: i, note: n, vel: 0, on: false }); }, (k * ph.gap + ph.len) * 1000));
+    });
+    status(`Auditioning ${m.name} · ${s.preset || "Init"} (${ROLE_LABELS[role].toLowerCase()}).`);
+  });
 }
 function applyPreset(i: number, name: string) {
   const s = state.slots[i], m = machineById(s.machine), p = m?.presets.find((x) => x.name === name);

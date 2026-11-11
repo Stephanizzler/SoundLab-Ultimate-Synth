@@ -39,6 +39,7 @@ export class Slot extends Unit {
   voices: Voice[]; fx: SlotFx | null; counter = 0;
   L = new Float32Array(BLOCK); R = new Float32Array(BLOCK); vbuf = new Float32Array(BLOCK);
   peak = 0; follow = 0; mute = false; solo = false;
+  dcL = 0; dcR = 0; dcXL = 0; dcXR = 0;
   held: number[] = []; // mono/unison note stack (played notes, last = sounding)
   sounding = new Map<number, number>(); // incoming note -> transposed note
   // Arpeggiator.
@@ -51,7 +52,7 @@ export class Slot extends Unit {
     this.def = def; this.rate = rate;
     this.voices = Array.from({ length: def.voices }, (_, i) => def.createVoice(rate, i));
     this.fx = def.createFx?.(rate) ?? null;
-    this.i = Object.fromEntries(["level", "pan", "delay", "reverb", "channel", "keyLo", "keyHi", "transpose", "assign", "uniVoices", "uniDetune", "spread", "arp", "arpRange", "arpRate"].map((k) => [k, this.index(k)]));
+    this.i = Object.fromEntries(["patchLevel", "level", "pan", "delay", "reverb", "channel", "keyLo", "keyHi", "transpose", "assign", "uniVoices", "uniDetune", "spread", "arp", "arpRange", "arpRate"].map((k) => [k, this.index(k)]));
     this.i.glide = def.glideParam ? this.index(def.glideParam) : -1;
   }
   get iLevel() { return this.i.level; }
@@ -178,10 +179,18 @@ export class Slot extends Unit {
       for (let k = 0; k < n; k++) { const x = this.vbuf[k]; this.L[k] += x * gl; this.R[k] += x * gr; }
     }
     const lv = this.eff[this.i.level];
-    const g = lv <= -47.9 ? 0 : dbToGain(lv) * this.def.level;
+    const g = lv <= -47.9 ? 0 : dbToGain(lv + this.eff[this.i.patchLevel]) * this.def.level;
     const pan = this.eff[this.i.pan], gl = g * Math.cos((pan + 1) * Math.PI / 4) * Math.SQRT2, gr = g * Math.sin((pan + 1) * Math.PI / 4) * Math.SQRT2;
     for (let k = 0; k < n; k++) { this.L[k] *= gl; this.R[k] *= gr; }
     if (this.fx) this.fx.process(this.L, this.R, n, this.eff);
+    // DC blocker (about 8 Hz), as on the AC-coupled outputs of the hardware:
+    // narrow pulse waves and asymmetric saturation otherwise leave an offset.
+    const rc = 1 - (2 * Math.PI * 8) / this.rate;
+    for (let k = 0; k < n; k++) {
+      const l = this.L[k], r = this.R[k];
+      this.dcL = l - this.dcXL + rc * this.dcL; this.dcXL = l; this.L[k] = this.dcL;
+      this.dcR = r - this.dcXR + rc * this.dcR; this.dcXR = r; this.R[k] = this.dcR;
+    }
     let peak = 0;
     for (let k = 0; k < n; k++) peak = Math.max(peak, Math.abs(this.L[k]), Math.abs(this.R[k]));
     this.peak = Math.max(peak, this.peak * 0.995);

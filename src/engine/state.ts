@@ -3,7 +3,7 @@
 // patch files and in the browser, so it is validated with sanitizeState
 // every time it is read.
 import { MACHINES, machineById } from "../machines/index.ts";
-import { MIXER_PARAMS, sanitize, type ParamDef } from "./machine.ts";
+import { MIXER_PARAMS, PATCH_LEVEL, sanitize, type ParamDef } from "./machine.ts";
 import { LFO_SHAPES } from "../dsp/env.ts";
 
 export const STATE_SCHEMA = 1;
@@ -91,7 +91,7 @@ export function slotParamDefs(machine: string): ParamDef[] {
   if (hit) return hit;
   const m = machineById(machine);
   if (!m) return [];
-  const defs = [...m.params, ...MIXER_PARAMS];
+  const defs = [...m.params, PATCH_LEVEL, ...MIXER_PARAMS];
   const ids = new Set<string>();
   for (const d of defs) { if (ids.has(d.id)) throw new Error(`${m.name}: parameter id "${d.id}" is used twice`); ids.add(d.id); }
   defsCache.set(machine, defs);

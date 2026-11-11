@@ -159,36 +159,51 @@ export const dx7: MachineDef = {
   params, glideParam: "glide",
   createVoice: (rate, i) => new DxVoice(rate, i + 111),
   presets: [
-    { name: "Electric piano", values: patch({ alg: 4, fb: 6 }, [
+    { name: "Electric piano", role: "keys", values: patch({ alg: 4, fb: 6 }, [
       { r: 1, lvl: 99, R: EP_C, L: EP_L }, { r: 14, lvl: 60, R: [95, 50, 35, 78], L: [99, 75, 0, 0], vel: 4 },
       { r: 1, lvl: 99, R: EP_C, L: EP_L, det: 3 }, { r: 1, lvl: 86, R: [95, 20, 20, 50], L: [99, 95, 0, 0], vel: 3 },
       { r: 1, lvl: 95, R: [95, 29, 20, 50], L: [99, 95, 0, 0], det: -3 }, { r: 1, lvl: 72, R: [95, 29, 20, 50], L: [99, 95, 0, 0], vel: 2 }]) },
-    { name: "Tubular bells", values: patch({ alg: 4, fb: 2 }, [
+    { name: "Tubular bells", role: "bell", values: patch({ alg: 4, fb: 2 }, [
       { r: 1, lvl: 99, R: [95, 33, 71, 25], L: [99, 0, 32, 0] }, { r: 3, fine: 50, lvl: 76, R: [98, 12, 71, 28], L: [99, 0, 32, 0] },
       { r: 1, lvl: 95, det: 2, R: [95, 33, 71, 25], L: [99, 0, 32, 0] }, { r: 3, fine: 50, lvl: 74, det: 2, R: [98, 12, 71, 28], L: [99, 0, 32, 0] },
       { r: 0, fine: 0, lvl: 70, R: [76, 78, 71, 70], L: [99, 0, 0, 0] }, { r: 1, lvl: 60, R: [98, 91, 0, 28], L: [99, 0, 0, 0] }]) },
-    { name: "Slap bass", values: patch({ alg: 15, fb: 7 }, [
+    { name: "Slap bass", role: "bass", values: patch({ alg: 15, fb: 7 }, [
       { r: 0, lvl: 99, R: [95, 62, 17, 58], L: [99, 85, 0, 0], vel: 2 }, { r: 0, lvl: 80, R: [99, 76, 34, 63], L: [99, 72, 0, 0], vel: 5 },
       { r: 1, lvl: 72, R: [99, 85, 30, 60], L: [99, 50, 0, 0], vel: 6 }, { r: 3, lvl: 66, R: [99, 70, 30, 60], L: [99, 50, 0, 0] },
       { r: 7, lvl: 55, R: [99, 80, 30, 60], L: [99, 40, 0, 0], vel: 7 }, { r: 1, lvl: 75, R: [99, 75, 30, 60], L: [99, 60, 0, 0] }]) },
-    { name: "Brass", values: patch({ alg: 21, fb: 7, pR1: 84, pR2: 95, pR3: 95, pR4: 60, pL1: 49, pL2: 50, pL3: 50, pL4: 50 }, [
+    { name: "Brass", role: "brass", values: patch({ alg: 21, fb: 7, pR1: 84, pR2: 95, pR3: 95, pR4: 60, pL1: 49, pL2: 50, pL3: 50, pL4: 50 }, [
       { r: 1, lvl: 99, R: [72, 76, 99, 71], L: [99, 88, 96, 0], vel: 2 }, { r: 1, lvl: 79, R: [62, 51, 29, 71], L: [82, 95, 96, 0], vel: 2 },
       { r: 1, lvl: 99, det: -2, R: [72, 76, 99, 71], L: [99, 88, 96, 0] }, { r: 1, lvl: 99, det: 2, R: [72, 76, 99, 71], L: [99, 88, 96, 0] },
       { r: 1, lvl: 98, det: 1, R: [72, 76, 99, 71], L: [99, 88, 96, 0] }, { r: 1, lvl: 86, R: [53, 61, 15, 70], L: [99, 85, 79, 0], vel: 1 }]) },
-    { name: "Marimba", values: patch({ alg: 6, fb: 0 }, [
+    { name: "Marimba", role: "pluck", values: patch({ alg: 6, fb: 0 }, [
       { r: 1, lvl: 99, R: [95, 58, 35, 62], L: [99, 0, 0, 0] }, { r: 3, fine: 10, lvl: 65, R: [99, 75, 40, 70], L: [99, 0, 0, 0], vel: 5 },
       { r: 4, lvl: 85, R: [95, 70, 35, 62], L: [99, 0, 0, 0] }, { r: 10, lvl: 60, R: [99, 85, 40, 70], L: [99, 0, 0, 0], vel: 5 }, null, null]) },
-    { name: "Drawbar organ", values: patch({ alg: 31, fb: 0, lfoSpeed: 60, lfoPmd: 4 }, [
+    { name: "Drawbar organ", role: "organ", values: patch({ alg: 31, fb: 0, lfoSpeed: 60, lfoPmd: 4 }, [
       { r: 0, lvl: 90, R: [99, 80, 99, 85], L: [99, 99, 99, 0] }, { r: 1, lvl: 92, R: [99, 80, 99, 85], L: [99, 99, 99, 0] },
       { r: 1, fine: 50, lvl: 80, R: [99, 80, 99, 85], L: [99, 99, 99, 0] }, { r: 2, lvl: 86, R: [99, 80, 99, 85], L: [99, 99, 99, 0] },
       { r: 3, lvl: 76, R: [99, 80, 99, 85], L: [99, 99, 99, 0] }, { r: 4, lvl: 74, R: [99, 80, 99, 85], L: [99, 99, 99, 0] }]) },
-    { name: "Strings", values: patch({ alg: 1, fb: 5, lfoSpeed: 30, lfoDelay: 40, lfoPmd: 8 }, [
-      { r: 1, lvl: 99, R: [45, 24, 20, 41], L: [99, 85, 85, 0] }, { r: 1, lvl: 70, det: 3, R: [75, 71, 17, 49], L: [82, 92, 62, 0] },
-      { r: 1, lvl: 97, det: -3, R: [45, 24, 20, 41], L: [99, 85, 85, 0] }, { r: 3, lvl: 64, R: [62, 30, 20, 41], L: [99, 85, 70, 0] },
+    { name: "Strings", role: "strings", values: patch({ alg: 1, fb: 5, lfoSpeed: 30, lfoDelay: 40, lfoPmd: 8 }, [
+      { r: 1, lvl: 99, R: [45, 24, 20, 41], L: [99, 96, 95, 0] }, { r: 1, lvl: 70, det: 3, R: [75, 71, 17, 49], L: [82, 92, 80, 0] },
+      { r: 1, lvl: 88, det: -3, R: [45, 24, 20, 41], L: [99, 96, 95, 0] }, { r: 3, lvl: 64, R: [62, 30, 20, 41], L: [99, 85, 70, 0] },
       { r: 1, lvl: 66, R: [62, 30, 20, 41], L: [99, 85, 70, 0] }, { r: 2, lvl: 58, R: [62, 30, 20, 41], L: [99, 85, 70, 0] }]) },
-    { name: "Harmonica", values: patch({ alg: 17, fb: 6, lfoSpeed: 66, lfoPmd: 6 }, [
+    { name: "Harmonica", role: "lead", values: patch({ alg: 17, fb: 6, lfoSpeed: 66, lfoPmd: 6 }, [
       { r: 1, lvl: 99, R: [70, 30, 30, 70], L: [99, 92, 90, 0], vel: 2 }, { r: 1, lvl: 72, R: [60, 30, 30, 70], L: [99, 90, 85, 0], vel: 3 },
       { r: 3, lvl: 62, R: [60, 30, 30, 70], L: [99, 90, 80, 0], vel: 3 }, { r: 2, lvl: 58, R: [60, 30, 30, 70], L: [99, 90, 80, 0] },
       { r: 5, lvl: 50, R: [60, 30, 30, 70], L: [99, 90, 80, 0] }, { r: 1, lvl: 66, R: [60, 30, 30, 70], L: [99, 90, 80, 0] }]) },
+    { name: "FM solid bass", role: "bass", values: patch({ alg: 1, fb: 4 }, [
+      { r: 0, lvl: 99, R: [99, 40, 30, 60], L: [99, 85, 70, 0] }, { r: 0, lvl: 80, R: [99, 55, 30, 60], L: [99, 60, 40, 0], vel: 4 },
+      { r: 1, lvl: 70, R: [99, 60, 30, 60], L: [99, 70, 50, 0] }, { r: 1, lvl: 75, R: [99, 70, 30, 60], L: [99, 40, 20, 0] }, null, null]) },
+    { name: "Clavinet", role: "keys", values: patch({ alg: 5, fb: 5 }, [
+      { r: 1, lvl: 99, R: [99, 60, 40, 70], L: [99, 40, 0, 0] }, { r: 3, lvl: 75, R: [99, 70, 40, 70], L: [99, 50, 0, 0], vel: 5 },
+      { r: 1, det: 2, lvl: 90, R: [99, 60, 40, 70], L: [99, 40, 0, 0] }, { r: 5, lvl: 68, R: [99, 75, 40, 70], L: [99, 40, 0, 0], vel: 5 },
+      { r: 2, lvl: 80, R: [99, 65, 40, 70], L: [99, 40, 0, 0] }, { r: 1, lvl: 70, R: [99, 80, 40, 70], L: [99, 30, 0, 0] }]) },
+    { name: "Glass pad", role: "pad", values: patch({ alg: 5, fb: 3, lfoSpeed: 30, lfoPmd: 5 }, [
+      { r: 1, lvl: 99, R: [40, 30, 30, 40], L: [99, 95, 92, 0] }, { r: 4, lvl: 55, R: [50, 30, 30, 40], L: [99, 80, 75, 0] },
+      { r: 1, det: 3, lvl: 86, R: [40, 30, 30, 40], L: [99, 95, 92, 0] }, { r: 7, lvl: 48, R: [50, 30, 30, 40], L: [99, 80, 70, 0] },
+      { r: 2, lvl: 85, R: [40, 30, 30, 40], L: [99, 95, 90, 0] }, { r: 1, det: -3, lvl: 60, R: [50, 30, 30, 40], L: [99, 85, 80, 0] }]) },
+    { name: "FM saw lead", role: "lead", values: patch({ alg: 1, fb: 7, assign: 2, glide: 0.05, lfoSpeed: 35, lfoDelay: 50, lfoPmd: 6 }, [
+      { r: 1, lvl: 99, R: [95, 40, 30, 70], L: [99, 95, 95, 0] }, { r: 1, lvl: 82, R: [95, 40, 30, 70], L: [99, 90, 88, 0] },
+      { r: 1, det: 2, lvl: 90, R: [95, 40, 30, 70], L: [99, 95, 95, 0] }, { r: 1, lvl: 70, R: [95, 40, 30, 70], L: [99, 90, 88, 0] },
+      { r: 1, lvl: 70, R: [95, 40, 30, 70], L: [99, 90, 88, 0] }, { r: 1, lvl: 70, R: [95, 40, 30, 70], L: [99, 90, 88, 0] }]) },
   ],
 };
