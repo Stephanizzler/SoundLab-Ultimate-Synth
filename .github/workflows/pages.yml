@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Build the C++ core natively and check it against TypeScript
+        run: npm run native:check
       - run: npm run build
       - name: Publish dist/ to gh-pages
         run: |

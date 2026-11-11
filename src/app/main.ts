@@ -10,6 +10,7 @@ import {
 } from "../engine/state.ts";
 import { APP_ID, describe, midiToTrack, patternToMidi, saveRender, stateFromVersion } from "../engine/projectio.ts";
 import { MIDI_MIME } from "../engine/midi.ts";
+import { nativeAvailable } from "../engine/native.ts";
 import { writeWav } from "../engine/wav.ts";
 import { h, $, select, control, knobRegistry, noteName, type Look } from "./ui.ts";
 import "@fontsource/michroma/latin-400.css";
@@ -80,6 +81,7 @@ function ensureAudio(): Promise<boolean> {
       node = new AudioWorkletNode(ac, "soundlab-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       node.connect(ac.destination);
       node.port.onmessage = (e: MessageEvent<Tick>) => onTick(e.data);
+      send({ type: "native", on: useNative });
       send({ type: "state", state });
       await ac.resume();
       $("audioNote").textContent = `Audio on · ${(ac.sampleRate / 1000).toFixed(1)} kHz · ${Math.round(((ac.baseLatency || 0) + (ac.outputLatency || 0)) * 1000) || "–"} ms`;
@@ -129,6 +131,8 @@ swingIn.addEventListener("input", () => { state.swing = Number(swingIn.value); $
 
 function onTick(t: Tick) {
   const prev = ui.tick; ui.tick = t;
+  if (useNative && !t.native && (!prev || prev.native)) $("engineNote").textContent = "The audio thread couldn't start the C++ engine, so every machine is using TypeScript. They sound the same.";
+  if (useNative && t.native && prev && !prev.native) engineNote();
   if (t.playing !== (playBtn.getAttribute("aria-pressed") === "true")) setPlaying(t.playing);
   if (t.pattern !== state.pattern) { state.pattern = t.pattern; renderSeq(); renderPatch(); syncTransport(); }
   else if (prev && prev.queued !== t.queued) syncTransport();
@@ -689,7 +693,7 @@ function showError(s: string) { const e = $("error"); e.textContent = s; e.hidde
 $("render").addEventListener("click", async () => {
   const bars = Number($<HTMLSelectElement>("bars").value), rate = Number($<HTMLSelectElement>("rate").value), tail = Number($<HTMLSelectElement>("tail").value);
   const stems = $<HTMLInputElement>("stems").checked ? state.slots.map((s, i) => (s.machine && !s.mute ? i : -1)).filter((i) => i >= 0) : [];
-  const job: RenderJob = { state: structuredClone(state), rate, bars, tail, stems };
+  const job: RenderJob = { state: structuredClone(state), rate, bars, tail, stems, native: useNative };
   const prog = $<HTMLProgressElement>("progress"); prog.hidden = false; prog.value = 0;
   ($("render") as HTMLButtonElement).disabled = true; status("Rendering…");
   const done = (r: RenderReply) => {
@@ -819,6 +823,29 @@ async function download(name: string, bytes: Uint8Array, type: string) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+/* =========================================================================
+   Sound engine: machines ported to C++ run as WebAssembly when this is on
+   ========================================================================= */
+const ENGINE_KEY = "soundlab.synth.engine";
+let useNative = (() => { try { return localStorage.getItem(ENGINE_KEY) !== "ts"; } catch { return true; } })() && nativeAvailable();
+const engineSel = $<HTMLSelectElement>("engine");
+engineSel.value = useNative ? "native" : "ts";
+if (!nativeAvailable()) { engineSel.value = "ts"; engineSel.disabled = true; }
+function engineNote() {
+  $("engineNote").textContent = !nativeAvailable() ? "This browser can't run the C++ engine, so every machine uses TypeScript."
+    : useNative ? `${PORTED.join(", ")} ${PORTED.length === 1 ? "runs" : "run"} in the C++ engine, which plug-ins and apps will use; the other machines still run in TypeScript. Both sound the same.`
+    : "Every machine runs in TypeScript.";
+}
+const PORTED = ["MiniMood Model Q"];
+engineSel.addEventListener("change", () => {
+  useNative = engineSel.value === "native";
+  try { localStorage.setItem(ENGINE_KEY, useNative ? "native" : "ts"); } catch { /* not stored: fine */ }
+  send({ type: "native", on: useNative });
+  engineNote();
+  status(`Sound engine: ${useNative ? "C++ (WebAssembly)" : "TypeScript"}.`);
+});
+engineNote();
 
 /* ========================================================================= */
 function renderAll() { nameIn.value = state.name; syncTransport(); renderRack(); renderSeq(); renderPatch(); renderKeys(); renderProjectBox(); }

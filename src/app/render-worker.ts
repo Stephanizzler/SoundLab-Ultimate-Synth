@@ -2,14 +2,16 @@
 import { renderOffline } from "../engine/engine.ts";
 import { measureLoudness, type Loudness } from "../core/index.ts";
 import type { SynthState } from "../engine/state.ts";
+import { setNativeEnabled } from "../engine/native.ts";
 
-export type RenderJob = { state: SynthState; rate: number; bars: number; tail: number; stems: number[] };
+export type RenderJob = { state: SynthState; rate: number; bars: number; tail: number; stems: number[]; native: boolean };
 export type RenderReply =
   | { type: "progress"; value: number; label: string }
   | { type: "done"; mix: { L: Float32Array; R: Float32Array; loudness: Loudness }; stems: { slot: number; L: Float32Array; R: Float32Array }[] }
   | { type: "error"; message: string };
 
 export function runRender(job: RenderJob, progress: (value: number, label: string) => void): RenderReply {
+  setNativeEnabled(job.native);
   const total = 1 + job.stems.length;
   progress(0, "Rendering the mix");
   const mix = renderOffline(job.state, job.rate, job.bars, { tail: job.tail });

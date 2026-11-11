@@ -61,8 +61,10 @@
       <label>Session name <input type="text" id="name" maxlength="80" /></label>
       <label class="button">Open…<input type="file" id="open" accept=".soundlab,.json,.mid,.midi" hidden /></label>
       <button class="button" id="newSession">New empty session</button>
+      <label>Sound engine <select id="engine"><option value="native">C++ (WebAssembly)</option><option value="ts">TypeScript</option></select></label>
       <button class="button" id="demo">Load demo</button>
     </div>
+    <p class="muted small" id="engineNote"></p>
     <p class="muted small">Open a <strong>.soundlab</strong> project (to save into it or reopen a patch saved in it), a <strong>.json</strong> patch, or a <strong>.mid</strong> file (it goes onto the selected sequencer track).</p>
     <div id="projectBox" class="notice" hidden></div>
     <h3>Render</h3>
@@ -92,7 +94,7 @@
   </section>
 </main>
 <div id="armBar" class="armbar" hidden role="status"></div>
-<footer class="muted small">SoundLab Ultimate Synth 0.4 · The machines are original models of classic designs with SoundLab's own names and faceplates. The products they are modelled on are their owners' trademarks, named only to say what each model is based on; SoundLab is not affiliated with or endorsed by their makers.</footer>
+<footer class="muted small">SoundLab Ultimate Synth 0.5 · The machines are original models of classic designs with SoundLab's own names and faceplates. The products they are modelled on are their owners' trademarks, named only to say what each model is based on; SoundLab is not affiliated with or endorsed by their makers.</footer>
 <script type="module" src="./src/app/main.ts"></script>
 </body>
 </html>

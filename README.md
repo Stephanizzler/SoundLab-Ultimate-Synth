@@ -4,7 +4,7 @@ A rack of sixteen synthesizer and drum-machine models, played by an eight-track 
 
 - **App id:** `soundlab.synth` (add to SoundLab-Core `docs/APPS.md`)
 - **Family:** SoundLab Pro; opens and saves `.soundlab` projects
-- **Version:** 0.4
+- **Version:** 0.5
 
 ## Run it
 
@@ -61,13 +61,24 @@ Each machine is an original model of a classic instrument, built to be as close 
 - **Patch bay:** 67 sources (for every track: gate, envelope, pitch, velocity, CV A, CV B and a ramp; four LFOs, synced or free; four macros; mod wheel, key velocity and aftertouch) to every knob in the rack, including the effects, the LFOs' own rates and the mixer. Up to 64 cables with bipolar amounts. Tap a source, then tap a knob. Patched knobs get a blue ring and a dot showing where the cable has moved them.
 - The demo session shows the idea: the acid track's CV A sweeps the bass filter, LFO 1 moves its envelope depth, Macro 1 adds resonance and the kick's envelope ducks the chords like a sidechain.
 
+## The C++ engine (for apps and plug-ins)
+
+The plan in SoundLab-Core [`docs/NATIVE.md`](https://github.com/Stephanizzler/SoundLab-Core/blob/main/docs/NATIVE.md) turns the finished app into iOS and Android apps and AU, AUv3, VST3 and AAX plug-ins, built on one C++ audio core. The port has started:
+
+- `native/` holds the C++ core: the DSP building blocks (`include/soundlab/dsp.h`), the voice base (`voice.h`) and the first machine, **MiniMood Model Q** (`machines/minimood.h`). It is header-only standard C++17 with no allocation, exceptions or platform APIs, ready for a JUCE or iPlug2 project (`native/CMakeLists.txt`).
+- `native/generated/params.h` is generated from the TypeScript machine definitions (`npm run native:params`), so both engines always agree on parameter positions.
+- `npm run native:wasm` compiles it to WebAssembly with plain clang (no Emscripten) and embeds it in `src/engine/native-wasm.ts`. The browser app runs ported machines in C++ through that build; the **Sound engine** switch in section 5 changes between C++ and TypeScript.
+- **Parity:** `tests/native.test.mjs` plays every MiniMood preset (with glide, legato, low-note priority, bend, mod wheel and every switch) through both engines and requires bit-identical output. `npm run native:check` compiles the core natively with CMake, compares it with the TypeScript (identical, apart from last-digit rounding between maths libraries of about 10⁻¹⁴) and times it: one MiniMood voice runs at about 260× real time natively against about 60× in TypeScript.
+
+Porting the next machine: add its voice under `native/include/soundlab/machines/`, export it in `native/src/wasm_api.cpp`, create it from the machine's `createVoice` through `src/engine/native.ts`, and add it to the parity test.
+
 ## Decisions (START_HERE §4)
 
 | Decision | Choice | Why |
 |---|---|---|
 | Where processing runs | **In the browser, on the device**: an AudioWorklet for live sound, a Web Worker for renders | Private, offline, no server cost. The same engine code runs in both and in the tests, so a render sounds like what you heard. Renders run about 6× faster than real time on a laptop. |
 | Model licences | **No AI models, no samples.** All DSP is written here from published papers and circuit descriptions | Nothing to license. |
-| Platform | Web first (Vite + TypeScript, no framework) | Same as the other Pro apps. A plug-in (AUv3/VST) version would need native audio; the engine has no browser dependencies, so it could be ported. |
+| Platform | Web first (Vite + TypeScript, no framework), then native apps and plug-ins from a C++ core | Same as the other Pro apps. The engine is being ported to C++ module by module (see above). |
 | Shared code | `src/core/` is copied from SoundLab-Core @ `7bd83cb` (see `src/core/SOURCE.txt`) | Allowed by the Core README. Copy again to update; don't edit it here. MIDI and WAV code are shared with SoundLab MIDI Transcript. |
 
 ## How it saves into a project
@@ -94,6 +105,7 @@ As with MIDI Transcript, putting MIDI in `stemIds` is a workaround; a `version.m
 
 ## Not yet
 
+- **The C++ port is at its start.** Only MiniMood Model Q runs in the C++ engine; the other fifteen machines, the sequencer, patch bay and effects are still TypeScript. No plug-in or mobile build exists yet (see SoundLab-Core `docs/NATIVE.md`).
 - **Undo**, and a song mode that chains patterns.
 - Per-step parameter locks without a cable (today: draw a CV lane and patch it).
 - Per-voice modulation from the patch bay (cables move a slot's knobs for all its voices at once; each machine's own envelopes and velocity remain per voice).

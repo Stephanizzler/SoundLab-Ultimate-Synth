@@ -7,3 +7,5 @@
 - Audio loops must not allocate. Read parameters into locals once per block.
 - Any new machine: add it to `src/machines/index.ts`; `npm test` then checks its presets, tuning, extremes and voice release.
 - Run `npm test` and `npm run build` before committing.
+- Machines ported to C++ (`native/`) must stay identical to their TypeScript: change both together, run `npm run native:wasm` (regenerates params.h and the embedded WebAssembly) and `npm test` (the parity test must stay bit-identical). `npm run native:check` builds natively with CMake.
+- C++ in `native/` is header-only C++17: no heap allocation, exceptions, RTTI or platform APIs; keep `-ffp-contract=off` so rounding matches JavaScript.

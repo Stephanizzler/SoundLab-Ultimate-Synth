@@ -5,6 +5,7 @@ import { Cascade4 } from "../dsp/filters.ts";
 import { Adsr } from "../dsp/env.ts";
 import { tanh } from "../dsp/util.ts";
 import { Voice, indexOf, type MachineDef, type ParamDef, type VoiceCtx } from "../engine/machine.ts";
+import { nativeMiniMood } from "../engine/native.ts";
 import { feet, cutoffHz, sw, pct, opt, time, semi, hzp } from "./common.ts";
 
 const RANGES = ["LO", "32'", "16'", "8'", "4'", "2'"] as const;
@@ -49,7 +50,7 @@ function wave(o: Osc, w: number, three: boolean) {
   }
 }
 
-class MoogVoice extends Voice {
+export class MoogVoice extends Voice {
   o = [new Osc(0), new Osc(0.33), new Osc(0.66)]; nz = new Noise(3); f = new Cascade4("ladder"); fe = new Adsr(); ae = new Adsr(); last = 0;
   trigger(legato: boolean) { if (!legato) { this.fe.gate(true); this.ae.gate(true); } } // single triggering, as on the original
   release() { this.fe.gate(false); this.ae.gate(false); }
@@ -96,7 +97,8 @@ export const minimoog: MachineDef = {
   id: "ladder-mono", name: "MiniMood Model Q", inspiredBy: "Moog Minimoog Model D (1970)", kind: "mono", voices: 1, level: 1.3,
   about: "Three oscillators (32' to 2' plus LO; osc 3 can leave the keyboard and become an LFO), a mixer with noise and the external-input feedback trick, and the 24 dB transistor ladder with its contour generators. The modulation mix blends osc 3 and noise; the wheel sets how much reaches the oscillators and the filter. Monophonic with low-note priority and single triggering, as on the original.",
   params, glideParam: "glide", priority: "low",
-  createVoice: (rate, i) => new MoogVoice(rate, i),
+  // The C++ port (native/) when the native engine is on; this TypeScript voice otherwise.
+  createVoice: (rate, i) => nativeMiniMood(rate, i) ?? new MoogVoice(rate, i),
   presets: [
     { name: "Classic bass", values: {} },
     { name: "Lead with glide", values: { r1: 3, r2: 3, r3: 4, f2: 0.12, f3: 7.02, m3: 0.3, cutoff: 1400, emph: 0.5, contour: 0.4, fS: 0.6, glideOn: 1, glide: 0.09, aD: 1 } },

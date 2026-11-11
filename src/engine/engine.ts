@@ -219,6 +219,8 @@ export class Engine {
   }
 
   /* ---------------- State ---------------- */
+  // Recreates every slot's voices, e.g. after switching between the C++ and TypeScript engines.
+  rebuildVoices() { for (const s of this.slots) s?.allOff(); this.slots = this.slots.map(() => null); this.setState(this.state); }
   setState(s: SynthState) {
     this.state = s;
     s.slots.forEach((st, i) => {

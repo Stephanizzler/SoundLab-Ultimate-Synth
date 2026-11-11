@@ -3,6 +3,7 @@
 import { Engine } from "../engine/engine.ts";
 import type { SynthState } from "../engine/state.ts";
 import type { NoteFlags } from "../engine/engine.ts";
+import { setNativeEnabled, nativeEnabled } from "../engine/native.ts";
 
 declare const sampleRate: number;
 declare function registerProcessor(name: string, ctor: unknown): void;
@@ -15,11 +16,13 @@ export type ToWorklet =
   | { type: "midi"; channel: number; note: number; vel: number; on: boolean }
   | { type: "play" } | { type: "stop" } | { type: "panic" }
   | { type: "pattern"; index: number }
+  | { type: "native"; on: boolean }
   | { type: "control"; wheel?: number; bend?: number; press?: number };
 export type Tick = {
   type: "tick"; playing: boolean; beat: number; pattern: number; queued: number;
   pos: number[]; slots: number[]; peakL: number; peakR: number;
   mods: [string, number, number][]; // unit, param index, effective value
+  native: boolean; // the C++ engine is loaded and on in the audio thread
 };
 
 class SynthProcessor extends AudioWorkletProcessor {
@@ -30,6 +33,7 @@ class SynthProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (e: MessageEvent<ToWorklet>) => this.handle(e.data);
   }
   handle(m: ToWorklet) {
+    if (m.type === "native" && !this.engine) { setNativeEnabled(m.on); return; }
     if (m.type === "state") { if (this.engine) this.engine.setState(m.state); else this.engine = new Engine(sampleRate, m.state); return; }
     const e = this.engine;
     if (!e) return;
@@ -41,6 +45,7 @@ class SynthProcessor extends AudioWorkletProcessor {
       case "stop": e.stop(); break;
       case "panic": e.stop(); e.panic(); break;
       case "pattern": e.queuePattern(m.index); break;
+      case "native": setNativeEnabled(m.on); e.rebuildVoices(); break;
       case "control":
         if (m.wheel !== undefined) e.wheel = m.wheel;
         if (m.bend !== undefined) e.ctx.bend = m.bend;
@@ -62,7 +67,7 @@ class SynthProcessor extends AudioWorkletProcessor {
       e.modUnit.touched.forEach((k) => mods.push(["mod", k, e.modUnit.eff[k]]));
       const t: Tick = {
         type: "tick", playing: e.playing, beat: e.beat, pattern: e.state.pattern, queued: e.queued,
-        pos: Array.from(e.tPos), slots: e.slots.map((s) => s?.peak ?? 0), peakL: e.peakL, peakR: e.peakR, mods,
+        pos: Array.from(e.tPos), slots: e.slots.map((s) => s?.peak ?? 0), peakL: e.peakL, peakR: e.peakR, mods, native: nativeEnabled(),
       };
       this.port.postMessage(t);
     }
