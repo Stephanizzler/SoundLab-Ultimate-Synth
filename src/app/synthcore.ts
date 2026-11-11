@@ -15,7 +15,11 @@ export type ToWorklet =
   | { type: "play" } | { type: "stop" } | { type: "panic" }
   | { type: "pattern"; index: number }
   | { type: "native"; on: boolean }
-  | { type: "control"; wheel?: number; bend?: number; press?: number };
+  | { type: "control"; wheel?: number; bend?: number; press?: number }
+  | { type: "record"; on: boolean; audio: boolean; midi: boolean };
+// While recording: the output's audio (16-bit, interleaved stereo) and the
+// notes each slot played, sent about 30 times a second, and once more at the end.
+export type RecChunk = { type: "rec"; pcm: Int16Array | null; notes: [number, number, number, number, number][]; start: number; done: boolean; rate: number };
 export type Tick = {
   type: "tick"; playing: boolean; beat: number; pattern: number; queued: number;
   pos: number[]; slots: number[]; peakL: number; peakR: number;
@@ -29,11 +33,34 @@ export class SynthCore {
   readonly rate: number;
   readonly post: (t: Tick) => void;
   readonly allowNative: boolean;
-  constructor(rate: number, post: (t: Tick) => void, allowNative = true) { this.rate = rate; this.post = post; this.allowNative = allowNative; if (!allowNative) setNativeEnabled(false); }
+  readonly postRec: (r: RecChunk, transfer: Transferable[]) => void;
+  rec: { audio: boolean; midi: boolean; start: number; pcm: Int16Array; at: number; notes: [number, number, number, number, number][] } | null = null;
+  constructor(rate: number, post: (t: Tick) => void, allowNative = true, postRec: (r: RecChunk, transfer: Transferable[]) => void = () => {}) {
+    this.rate = rate; this.post = post; this.allowNative = allowNative; this.postRec = postRec; if (!allowNative) setNativeEnabled(false);
+  }
+  private flushRec(done: boolean) {
+    const r = this.rec;
+    if (!r) return;
+    const pcm = r.audio ? r.pcm.slice(0, r.at) : null;
+    this.postRec({ type: "rec", pcm, notes: r.notes, start: r.start, done, rate: this.rate }, pcm ? [pcm.buffer] : []);
+    r.at = 0; r.notes = [];
+    if (done) { this.rec = null; if (this.engine) this.engine.onNote = null; }
+  }
+  private hookNotes() {
+    const e = this.engine, r = this.rec;
+    if (!e || !r || !r.midi) return;
+    e.onNote = (slot, note, vel, on, frame) => { this.rec?.notes.push([frame, slot, note, Math.round(vel * 127), on ? 1 : 0]); };
+  }
   handle(m: ToWorklet) {
     if (m.type === "native" && !this.allowNative) return;
     if (m.type === "native" && !this.engine) { setNativeEnabled(m.on); return; }
-    if (m.type === "state") { if (this.engine) this.engine.setState(m.state); else this.engine = new Engine(this.rate, m.state); return; }
+    if (m.type === "state") { if (this.engine) this.engine.setState(m.state); else { this.engine = new Engine(this.rate, m.state); this.hookNotes(); } return; }
+    if (m.type === "record") {
+      if (!m.on) { this.flushRec(true); return; }
+      this.rec = { audio: m.audio, midi: m.midi, start: this.engine?.clock ?? 0, pcm: new Int16Array(Math.ceil(this.rate / 15) * 2 + 4096), at: 0, notes: [] };
+      this.hookNotes();
+      return;
+    }
     const e = this.engine;
     if (!e) return;
     switch (m.type) {
@@ -56,6 +83,16 @@ export class SynthCore {
     const e = this.engine;
     if (!e) { L.fill(0, 0, n); R.fill(0, 0, n); return; }
     e.process(L, R, n);
+    const r = this.rec;
+    if (r?.audio) {
+      if (r.at + n * 2 > r.pcm.length) this.flushRec(false);
+      const pcm = r.pcm;
+      for (let i = 0, p = r.at; i < n; i++, p += 2) {
+        const l = L[i] < -1 ? -1 : L[i] > 1 ? 1 : L[i], rr = R[i] < -1 ? -1 : R[i] > 1 ? 1 : R[i];
+        pcm[p] = Math.round(l * 32767); pcm[p + 1] = Math.round(rr * 32767);
+      }
+      r.at += n * 2;
+    }
     this.frames += n;
     if (this.frames >= this.rate / 30) {
       this.frames = 0;
@@ -63,6 +100,7 @@ export class SynthCore {
       e.slots.forEach((s, i) => s?.touched.forEach((k) => mods.push([String(i), k, s.eff[k]])));
       e.fxUnit.touched.forEach((k) => mods.push(["fx", k, e.fxUnit.eff[k]]));
       e.modUnit.touched.forEach((k) => mods.push(["mod", k, e.modUnit.eff[k]]));
+      if (this.rec) this.flushRec(false);
       this.post({
         type: "tick", playing: e.playing, beat: e.beat, pattern: e.state.pattern, queued: e.queued,
         pos: Array.from(e.tPos), slots: e.slots.map((s) => s?.peak ?? 0), peakL: e.peakL, peakR: e.peakR, mods, native: nativeEnabled(),

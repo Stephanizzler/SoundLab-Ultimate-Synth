@@ -10,7 +10,7 @@ class SynthProcessor extends AudioWorkletProcessor {
   core: SynthCore;
   constructor() {
     super();
-    this.core = new SynthCore(sampleRate, (t) => this.port.postMessage(t));
+    this.core = new SynthCore(sampleRate, (t) => this.port.postMessage(t), true, (r, tr) => this.port.postMessage(r, tr));
     this.port.onmessage = (e: MessageEvent<ToWorklet>) => this.core.handle(e.data);
   }
   process(_in: Float32Array[][], outputs: Float32Array[][]) {

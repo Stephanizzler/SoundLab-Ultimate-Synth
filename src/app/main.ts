@@ -29,11 +29,12 @@ import { renderRackBack } from "./rackback.ts";
 import { renderGraph } from "./graph.ts";
 import { PHRASES, ROLE_LABELS } from "../engine/audition.ts";
 import { setupSettings } from "./settings.ts";
+import { setupRecorder } from "./recorder.ts";
 import { renderPianoRoll } from "./pianoroll.ts";
 import type { PatchCtx } from "./cables.ts";
 import WORKLET from "./worklet.ts?worklet";
 import RenderWorker from "./render-worker.ts?worker&inline";
-import { SynthCore, type Tick, type ToWorklet } from "./synthcore.ts";
+import { SynthCore, type RecChunk, type Tick, type ToWorklet } from "./synthcore.ts";
 import { runRender, type RenderJob, type RenderReply } from "./render-worker.ts";
 
 // The claude.ai viewer refuses confirm() dialogs, so there the action simply goes ahead.
@@ -165,7 +166,7 @@ function send(m: ToWorklet) { post?.(m); }
 // the same, with a little more latency, and uses the TypeScript machines.
 let fallback = false;
 function startFallback(ctx: AudioContext) {
-  const core = new SynthCore(ctx.sampleRate, (t) => onTick(t), false);
+  const core = new SynthCore(ctx.sampleRate, (t) => onTick(t), false, (r) => recorder.onChunk(r));
   const sp = ctx.createScriptProcessor(2048, 0, 2);
   sp.onaudioprocess = (e) => { const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1); core.process(L, R, L.length); };
   post = (m) => core.handle(m);
@@ -219,7 +220,7 @@ function ensureAudio(): Promise<boolean> {
         await loadWorklet(ac);
         wl = new AudioWorkletNode(ac, "soundlab-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       } catch { wl = null; }
-      if (wl) { const port = wl.port; post = (m) => port.postMessage(m); port.onmessage = (e: MessageEvent<Tick>) => onTick(e.data); node = wl; }
+      if (wl) { const port = wl.port; post = (m) => port.postMessage(m); port.onmessage = (e: MessageEvent<Tick | RecChunk>) => { if (e.data.type === "rec") recorder.onChunk(e.data); else onTick(e.data); }; node = wl; }
       else node = startFallback(ac);
       node.connect(ac.destination);
       // A parallel tap for the scope and spectrum analyser.
@@ -904,6 +905,7 @@ document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !t.closest("button")) { e.preventDefault(); void togglePlay(); return; }
   if (e.repeat) return;
   const k = e.key.toLowerCase();
+  if (k === "r") { $<HTMLButtonElement>("rec").click(); return; }
   if (k === "z" || k === "x") { play.octave = Math.max(0, Math.min(8, play.octave + (k === "z" ? -1 : 1))); renderKeys(); return; }
   const i = KEYMAP.indexOf(k);
   if (i >= 0) { const n = play.octave * 12 + 12 + i; play.down.set(i, n); noteOn(n); }
@@ -1220,6 +1222,15 @@ function renderAll() { nameIn.value = state.name; syncTransport(); renderRack();
 renderAll();
 history.last = snap(); syncUndo(); renderAutosaves();
 setupSettings();
+// Recording (● Rec in the transport; takes in the Recordings panel).
+const recorder = setupRecorder({
+  send, ensureAudio,
+  playing: () => playBtn.getAttribute("aria-pressed") === "true",
+  setTransport: (on) => { send({ type: on ? "play" : "stop" }); setPlaying(on); },
+  sessionName: () => state.name, bpm: () => state.bpm,
+  slots: () => state.slots.map((s) => { const m = machineById(s.machine); return { name: m?.name ?? "Empty", drum: m?.kind === "drum" }; }),
+  status, error: showError, download, putOnTrack: (bytes, name) => importMidi(bytes, name),
+}, $<HTMLButtonElement>("rec"), $("recTime"), $("recordings"));
 // For automated tests and debugging: feed raw MIDI bytes as if from a device.
 (globalThis as unknown as { soundlab?: unknown }).soundlab = { midi: (bytes: number[]) => handleMidi(bytes) };
 let lastWidth = window.innerWidth;

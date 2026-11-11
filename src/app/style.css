@@ -524,3 +524,15 @@ dialog.settings::backdrop { background: #000b; backdrop-filter: blur(3px); }
 .jack.audio i { background: #9aa3b2; box-shadow: inset 0 0 0 3px #3a3f48; }
 .cable-line.audio-line { stroke: #8a929e; stroke-width: 5; opacity: .85; }
 .strip.empty { flex-basis: 70px; }
+
+/* Recording */
+.button.rec { color: var(--bad); }
+.button.rec.recording { background: var(--bad); color: #fff; border-color: var(--bad); animation: recPulse 1.2s ease-in-out infinite; }
+@keyframes recPulse { 50% { box-shadow: 0 0 0 4px #F0616D44; } }
+.rectime { color: var(--bad); font: 600 13px/1 "JetBrains Mono", monospace; }
+.takes { display: grid; gap: 10px; }
+.take { border: 1px solid var(--line); border-radius: var(--r-control); background: var(--raised); padding: 8px 10px; }
+.take .row { margin: 4px 0; }
+.take input[type="text"] { flex: 1; min-width: 160px; max-width: 360px; }
+.take audio { width: 100%; height: 36px; margin: 4px 0; }
+.button.ghost { background: transparent; color: var(--muted); }

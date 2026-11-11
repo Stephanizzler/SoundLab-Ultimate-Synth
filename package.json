@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "artifact": "vite build && node tools/artifact.mjs dist/artifact.html",
-    "test": "node tests/dsp.test.mjs && node tests/machines.test.mjs && node tests/sequencer.test.mjs && node tests/multi.test.mjs && node tests/project.test.mjs && node tests/native.test.mjs && node tests/midi.test.mjs && node tests/presets.test.mjs",
+    "test": "node tests/dsp.test.mjs && node tests/machines.test.mjs && node tests/sequencer.test.mjs && node tests/multi.test.mjs && node tests/project.test.mjs && node tests/native.test.mjs && node tests/midi.test.mjs && node tests/record.test.mjs && node tests/presets.test.mjs",
     "native:params": "node tools/gen-native-params.mjs",
     "native:wasm": "node tools/gen-native-params.mjs && ./native/build-wasm.sh",
     "native:check": "cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release && cmake --build native/build && node tools/native-check.mjs"

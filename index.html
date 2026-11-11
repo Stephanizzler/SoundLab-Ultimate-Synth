@@ -40,6 +40,8 @@
 <div class="transport" id="transport" role="toolbar" aria-label="Transport">
   <div class="tin">
     <button id="play" class="button primary" aria-pressed="false">▶ Play</button>
+    <button id="rec" class="button rec" aria-pressed="false" title="Record audio and/or MIDI of everything you play">● Rec</button>
+    <span id="recTime" class="rectime" hidden aria-live="off"></span>
     <label class="tempo">Tempo <input type="number" id="bpm" min="30" max="300" step="0.1" /></label>
     <label class="swing">Swing <input type="range" id="swing" min="0" max="0.5" step="0.01" /><output id="swingOut"></output></label>
     <div class="patterns" id="patterns" role="radiogroup" aria-label="Pattern"></div>
@@ -90,6 +92,11 @@
   <section class="panel" id="playPanel">
     <h2>4 · Play</h2>
     <div id="keys"></div>
+  </section>
+
+  <section class="panel" id="recPanel">
+    <h2>Recordings</h2>
+    <div id="recordings"></div>
   </section>
 
   <section class="panel" id="filePanel">

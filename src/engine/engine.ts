@@ -67,11 +67,15 @@ export class Slot extends Unit {
   arpOn() { return this.def.kind !== "drum" && Math.round(this.p("arp")) > 0; }
   glideOn() { return this.i.glide >= 0 && this.eff[this.i.glide] > 0.001; }
 
+  // Called with every note this slot starts and stops (as it sounds, after
+  // transpose), for recording MIDI. Set by the engine.
+  onNote: ((note: number, vel: number, on: boolean) => void) | null = null;
   noteOn(note: number, vel: number, f: NoteFlags = {}) {
     if (note < this.p("keyLo", 0) || note > this.p("keyHi", 127)) return;
     const n = Math.max(0, Math.min(127, note + Math.round(this.p("transpose"))));
     if (this.sounding.has(note)) this.noteOff(note);
     this.sounding.set(note, n);
+    this.onNote?.(n, vel, true);
     if (this.arpOn()) { this.arpHeld.push({ note: n, vel }); return; }
     this.play(n, vel, f);
   }
@@ -79,6 +83,7 @@ export class Slot extends Unit {
     const n = this.sounding.get(note);
     if (n === undefined) return;
     this.sounding.delete(note);
+    this.onNote?.(n, 0, false);
     const k = this.arpHeld.findIndex((x) => x.note === n);
     if (k >= 0) { this.arpHeld.splice(k, 1); return; }
     this.unplay(n);
@@ -240,7 +245,7 @@ export class Engine {
       const def = machineById(st.machine);
       const cur = this.slots[i];
       if (!def) { this.slots[i] = null; return; }
-      if (!cur || cur.def.id !== def.id) this.slots[i] = new Slot(def, st.params, this.rate);
+      if (!cur || cur.def.id !== def.id) { this.slots[i] = new Slot(def, st.params, this.rate); this.hookSlot(i); }
       else for (const d of cur.defs) cur.set(d.id, st.params[d.id] ?? d.def);
       this.slots[i]!.mute = st.mute; this.slots[i]!.solo = st.solo;
     });
@@ -295,6 +300,12 @@ export class Engine {
     return null;
   }
   track(t: number): Track | undefined { return this.state.patterns[this.state.pattern]?.tracks[t]; }
+
+  /* ---------------- Recording ---------------- */
+  // Samples rendered since the engine started; notes are stamped with it.
+  clock = 0;
+  onNote: ((slot: number, note: number, vel: number, on: boolean, frame: number) => void) | null = null;
+  private hookSlot(i: number) { const s = this.slots[i]; if (s) s.onNote = (n, v, on) => this.onNote?.(i, n, v, on, this.clock); }
 
   /* ---------------- Live input ---------------- */
   noteOn(slot: number, note: number, vel: number, f?: NoteFlags) { this.keyVel = vel; this.slots[slot]?.noteOn(note, vel, f); }
@@ -376,6 +387,7 @@ export class Engine {
     for (let off = 0; off < n; off += BLOCK) {
       const m = Math.min(BLOCK, n - off);
       this.block(m);
+      this.clock += m;
       outL.set(this.busL.subarray(0, m), off); outR.set(this.busR.subarray(0, m), off);
     }
   }
