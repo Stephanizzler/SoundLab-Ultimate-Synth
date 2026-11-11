@@ -492,3 +492,35 @@ body.learning .ctl:hover { background: color-mix(in srgb, var(--good) 15%, trans
 .prgrid { display: block; cursor: crosshair; touch-action: none; }
 .prgrid:focus-visible { outline: 2px solid var(--info); outline-offset: -2px; }
 @media (max-width: 560px) { .prscroll { height: 340px; } .backmod { padding: 12px 26px; } .jack { width: 52px; } }
+
+/* Settings (the cog) and the how-to video */
+.toprow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cog { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--raised); color: var(--text); font-size: 22px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.cog:hover, .cog:focus-visible { border-color: var(--accent); color: var(--accent); }
+dialog.settings { width: min(880px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-panel); padding: 16px; box-shadow: 0 20px 60px #000d; }
+dialog.settings::backdrop { background: #000b; backdrop-filter: blur(3px); }
+.settings .shead { display: flex; justify-content: space-between; align-items: center; }
+.settings .shead h2 { margin: 0; }
+.settings section { margin: 8px 0 16px; }
+.settings h3 { margin-top: 8px; }
+.vidbox { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--r-control); overflow: hidden; margin: 0 0 8px; }
+.vidbox video { width: 100%; height: 100%; display: block; }
+
+/* Mixer */
+.mixer { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.strip { flex: 0 0 112px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-control); padding: 8px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.strip.empty { opacity: .5; }
+.strip.muted .sfader { opacity: .45; }
+.strip.master { border-color: var(--accent); flex-basis: 120px; }
+.strip .sname { display: flex; gap: 6px; align-items: baseline; width: 100%; font-size: 12px; overflow: hidden; white-space: nowrap; }
+.strip .sname b { color: var(--accent); }
+.strip .sname span { overflow: hidden; text-overflow: ellipsis; }
+.strip .sknobs { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.strip .sfader { display: flex; gap: 6px; align-items: flex-end; }
+.strip .smeter { width: 6px; height: 120px; background: #000; border-radius: 3px; position: relative; overflow: hidden; }
+.strip .smeter i { position: absolute; left: 0; right: 0; bottom: 0; height: var(--v, 0%); background: linear-gradient(to top, var(--good) 70%, var(--accent) 88%, var(--bad)); transition: height 60ms linear; }
+.strip .sbtn { margin: 0; gap: 4px; justify-content: center; }
+.strip p { margin: 0; text-align: center; }
+.jack.audio i { background: #9aa3b2; box-shadow: inset 0 0 0 3px #3a3f48; }
+.cable-line.audio-line { stroke: #8a929e; stroke-width: 5; opacity: .85; }
+.strip.empty { flex-basis: 70px; }

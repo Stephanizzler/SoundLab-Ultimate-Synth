@@ -11,9 +11,15 @@ import { addCable, cablePath, cablePopover, cableColour, chooseKnob, closePopove
 const FAVOURITES = ["cutoff", "res", "emph", "lpPeak", "hpCut", "envAmt", "contour", "lpEg", "pw", "aPw", "pos", "o1Shape", "fm", "index", "timbre", "glide", "detune", "kTune", "bdTune", "bdDecay", "sdSnappy"];
 const SLOT_MIXER = ["level", "pan", "delay", "reverb"];
 
-type Jack = { port: string; label: string; dir: "in" | "out"; any?: string };
+type Jack = { port: string; label: string; dir: "in" | "out"; any?: string; audio?: boolean };
 function jack(j: Jack) {
-  return h("button", { class: `jack ${j.dir}`, "data-port": j.port, "data-dir": j.dir, "data-any": j.any, title: `${j.dir === "out" ? "Output" : "Input"}: ${j.label}. Drag to patch.` }, h("i", { "aria-hidden": "true" }), h("span", {}, j.label));
+  return h("button", { class: `jack ${j.dir} ${j.audio ? "audio" : ""}`, "data-port": j.port, "data-dir": j.dir, "data-any": j.any, "data-audio": j.audio ? "1" : undefined,
+    title: j.audio ? `${j.label}: audio, always connected to the mixer` : `${j.dir === "out" ? "Output" : "Input"}: ${j.label}. Drag to patch.` }, h("i", { "aria-hidden": "true" }), h("span", {}, j.label));
+}
+// Audio connections that are always made (normalled): each slot to its mixer
+// channel, the mixer to the effects and master, the master to the speakers.
+function audioLinks(slots: number[]): [string, string][] {
+  return [...slots.map((i): [string, string] => [`a${i}.out`, `mix.in${i}`]), ["mix.out", "fx.in"], ["fx.out", "spk.in"]];
 }
 function group(title: string, jacks: Jack[]) { return h("div", { class: "jgroup" }, h("span", { class: "gt" }, title), h("div", { class: "jacks" }, ...jacks.map(jack))); }
 function module(title: string, sub: string, ...groups: HTMLElement[]) {
@@ -42,11 +48,16 @@ export function renderRackBack(ctx: PatchCtx, host: HTMLElement) {
     const fav = FAVOURITES.filter((id) => defs.some((d) => d.id === id)).slice(0, 6);
     const name = (id: string) => defs.find((d) => d.id === id)?.name ?? id;
     wrap.append(module(`${i + 1} · ${m.name}`, m.kind === "drum" ? "Drum machine" : "Synthesizer",
-      group("Audio", [{ port: `s${i}.follow`, label: "Level out (sidechain)", dir: "out" }]),
+      group("Audio", [{ port: `a${i}.out`, label: "Audio out → mixer", dir: "out", audio: true }, { port: `s${i}.follow`, label: "Level out (sidechain)", dir: "out" }]),
       group("CV in", [...fav.map((id) => ({ port: `s${i}.${id}`, label: name(id), dir: "in" as const })), { port: "", label: "Any knob", dir: "in", any: `s${i}.` }]),
       group("Mixer in", SLOT_MIXER.map((id) => ({ port: `s${i}.${id}`, label: name(id), dir: "in" as const })))));
   });
+  const live = st.slots.map((s, i) => (machineById(s.machine) ? i : -1)).filter((i) => i >= 0);
+  wrap.append(module("Mixer", "Every slot's audio, summed",
+    group("Channel in", live.map((i) => ({ port: `mix.in${i}`, label: `Ch ${i + 1}`, dir: "in" as const, audio: true }))),
+    group("Out", [{ port: "mix.out", label: "Mix out", dir: "out", audio: true }])));
   wrap.append(module("Effects & master", "Delay, reverb, bus",
+    group("Audio", [{ port: "fx.in", label: "Mix in", dir: "in", audio: true }, { port: "fx.out", label: "Main out", dir: "out", audio: true }, { port: "spk.in", label: "Speakers", dir: "in", audio: true }]),
     group("CV in", [...["dTime", "dFb", "dLevel", "rSize", "rLevel", "drive", "master"].map((id) => ({ port: `fx.${id}`, label: FX_PARAMS.find((d) => d.id === id)!.name, dir: "in" as const })), { port: "", label: "Any knob", dir: "in", any: "fx." }])));
   wrap.append(svg);
   host.append(wrap);
@@ -59,6 +70,15 @@ export function renderRackBack(ctx: PatchCtx, host: HTMLElement) {
     svg.setAttribute("width", String(wrap.scrollWidth)); svg.setAttribute("height", String(wrap.scrollHeight));
     svg.replaceChildren();
     wrap.querySelectorAll(".jack.used").forEach((j) => j.classList.remove("used"));
+    for (const [from, to] of audioLinks(live)) {
+      const a = portEl(from), b = portEl(to);
+      if (!a || !b) continue;
+      a.classList.add("used"); b.classList.add("used");
+      const [x1, y1] = centre(a), [x2, y2] = centre(b), d = cablePath(x1, y1, x2, y2);
+      const sh = document.createElementNS(svg.namespaceURI, "path"); sh.setAttribute("d", d); sh.setAttribute("class", "cshadow");
+      const line = document.createElementNS(svg.namespaceURI, "path"); line.setAttribute("d", d); line.setAttribute("class", "cable-line audio-line");
+      svg.append(sh, line);
+    }
     st.cables.forEach((c, i) => {
       const a = portEl(c.src), b = portEl(c.dst) ?? anyFor(c.dst);
       if (!a || !b) return;
@@ -78,6 +98,7 @@ export function renderRackBack(ctx: PatchCtx, host: HTMLElement) {
   wrap.addEventListener("pointerdown", (e) => {
     const j = (e.target as HTMLElement).closest(".jack") as HTMLElement | null;
     if (!j) return;
+    if (j.dataset.audio) { ctx.status("Audio jacks are always connected: every slot plays through the mixer to the speakers. Patch the other jacks to modulate."); return; }
     e.preventDefault(); closePopover();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path") as SVGPathElement; path.setAttribute("class", "cable-line dragging"); path.setAttribute("stroke", cableColour(st.cables.length));
     svg.append(path);
@@ -95,6 +116,7 @@ export function renderRackBack(ctx: PatchCtx, host: HTMLElement) {
     // Look under any cables lying across the jack.
     const target = document.elementsFromPoint(e.clientX, e.clientY).map((el) => el.closest(".jack")).find(Boolean) as HTMLElement | undefined;
     if (!target || target === from) return;
+    if (target.dataset.audio) { ctx.status("Audio jacks are always connected. Drop control cables on the blue inputs."); return; }
     const out = from.dataset.dir === "out" ? from : target.dataset.dir === "out" ? target : null;
     const inp = from.dataset.dir === "in" ? from : target.dataset.dir === "in" ? target : null;
     if (!out || !inp) { ctx.status("Connect an output (amber) to an input (blue)."); return; }

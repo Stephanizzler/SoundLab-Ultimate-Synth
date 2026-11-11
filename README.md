@@ -100,6 +100,9 @@ As with MIDI Transcript, putting MIDI in `stemIds` is a workaround; a `version.m
 - Sequencer and patch bay as above, sample-accurate to one 32-sample block (0.7 ms at 48 kHz).
 - On-screen keyboard (multi-touch) playing one slot or the whole rack, computer keyboard (A–K, Z/X for octave, Space to play), Web MIDI input (follow the keyboard, or multitimbral by each slot's channel; mod wheel, pitch bend, aftertouch, start/stop).
 - Render with loudness, true peak and range readouts; WAV, MIDI and patch (.json) downloads; .soundlab save and reopen; MIDI import onto a track (choose the part).
+- A how-to video (2½ minutes, captioned) opens with the app until you turn that off; it lives in the ⚙ settings window, with the sound-engine choice. `node tools/record-tutorial.cjs` re-records it from the real app (start `npx vite preview --port 4173` first).
+- The mixer: every slot's audio is wired to its own channel (level fader, meter, pan, delay and reverb sends, mute, solo), summed to the master fader; the back of the rack shows these audio connections as fixed cables to the Mixer module.
+- Sound on every browser: the AudioWorklet engine, or the same engine on the page (compatibility mode) where a viewer blocks worklets. On iPhone and iPad it plays with the silent switch on, and any tap resumes sound the system paused.
 - The session is kept in this browser between visits, autosaved every 10 seconds with restore points; undo and redo (Ctrl+Z, Ctrl+Shift+Z) for every edit.
 - Flip the rack to its back and drag cables between jacks (sequencer tracks, LFOs, macros, controller, each slot's Level out for sidechain ducking, knobs, effects); the same patching as a modular graph with draggable nodes.
 - Piano roll for the selected track, C1 to C7, with chords, note lengths and drag editing.

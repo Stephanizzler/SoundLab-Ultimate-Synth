@@ -28,11 +28,12 @@ import { connectBleMidi, bluetoothAvailable } from "./blemidi.ts";
 import { renderRackBack } from "./rackback.ts";
 import { renderGraph } from "./graph.ts";
 import { PHRASES, ROLE_LABELS } from "../engine/audition.ts";
+import { setupSettings } from "./settings.ts";
 import { renderPianoRoll } from "./pianoroll.ts";
 import type { PatchCtx } from "./cables.ts";
 import WORKLET from "./worklet.ts?worklet";
 import RenderWorker from "./render-worker.ts?worker&inline";
-import type { Tick, ToWorklet } from "./worklet.ts";
+import { SynthCore, type Tick, type ToWorklet } from "./synthcore.ts";
 import { runRender, type RenderJob, type RenderReply } from "./render-worker.ts";
 
 // The claude.ai viewer refuses confirm() dialogs, so there the action simply goes ahead.
@@ -155,36 +156,86 @@ function commit() { send({ type: "state", state }); persist(); }
 /* =========================================================================
    Audio
    ========================================================================= */
-let ac: AudioContext | null = null, node: AudioWorkletNode | null = null, starting: Promise<boolean> | null = null;
-function send(m: ToWorklet) { node?.port.postMessage(m); }
+let ac: AudioContext | null = null, node: AudioNode | null = null, starting: Promise<boolean> | null = null;
+// Messages go to the AudioWorklet, or to the main-thread fallback engine.
+let post: ((m: ToWorklet) => void) | null = null;
+function send(m: ToWorklet) { post?.(m); }
+// Where the browser won't load an AudioWorklet module (some embedded viewers
+// block it), the same engine runs on the page in a ScriptProcessor. It sounds
+// the same, with a little more latency, and uses the TypeScript machines.
+let fallback = false;
+function startFallback(ctx: AudioContext) {
+  const core = new SynthCore(ctx.sampleRate, (t) => onTick(t), false);
+  const sp = ctx.createScriptProcessor(2048, 0, 2);
+  sp.onaudioprocess = (e) => { const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1); core.process(L, R, L.length); };
+  post = (m) => core.handle(m);
+  fallback = true;
+  return sp;
+}
 async function loadWorklet(ctx: AudioContext) {
   const blob = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
   try { await ctx.audioWorklet.addModule(blob); }
   catch { await ctx.audioWorklet.addModule(`data:text/javascript;base64,${btoa(unescape(encodeURIComponent(WORKLET)))}`); }
   finally { URL.revokeObjectURL(blob); }
 }
+// iPhone and iPad: web audio follows the ring/silent switch unless the page
+// asks for "playback" (Safari 16.4+), or, on older iOS, plays an <audio>
+// element. Both have to happen inside the tap that starts the sound.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let unmuteEl: HTMLAudioElement | null = null;
+function unmuteIos() {
+  const nav = navigator as Navigator & { audioSession?: { type: string } };
+  try { if (nav.audioSession) nav.audioSession.type = "playback"; } catch { /* not supported */ }
+  if (!IOS || nav.audioSession || unmuteEl) return;
+  // Half a second of silence, looped.
+  const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o: number, t: string) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true); b.fill(128, 44);
+  unmuteEl = new Audio(URL.createObjectURL(new Blob([b], { type: "audio/wav" })));
+  unmuteEl.loop = true; unmuteEl.setAttribute("playsinline", ""); void unmuteEl.play().catch(() => {});
+}
+function audioState() {
+  if (!ac) return;
+  const note = $("audioNote");
+  if (ac.state === "running") note.textContent = `Audio on · ${(ac.sampleRate / 1000).toFixed(1)} kHz · ${Math.round(((ac.baseLatency || 0) + (ac.outputLatency || 0)) * 1000) || "–"} ms${fallback ? " · compatibility mode" : ""}${IOS ? " · no sound? Check the volume and the ring/silent switch" : ""}`;
+  else note.textContent = "Sound is paused by the browser. Tap anywhere to turn it back on.";
+}
+// Any tap or key resumes sound the browser suspended (another app took the
+// audio, the phone locked, the tab was in the background).
+for (const ev of ["pointerdown", "keydown", "touchend"]) document.addEventListener(ev, () => { if (ac && ac.state !== "running") { unmuteIos(); void ac.resume(); } }, { capture: true, passive: true });
 function ensureAudio(): Promise<boolean> {
-  if (node && ac) { if (ac.state !== "running") void ac.resume(); return Promise.resolve(true); }
+  if (node && ac) { if (ac.state !== "running") { unmuteIos(); void ac.resume(); } return Promise.resolve(true); }
   starting ??= (async () => {
     try {
-      if (!("AudioWorkletNode" in window)) throw new Error("This browser can't run the synth engine (no AudioWorklet).");
+      unmuteIos();
       ac = new AudioContext({ latencyHint: "interactive" });
-      await loadWorklet(ac);
-      node = new AudioWorkletNode(ac, "soundlab-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      // Resume now, while this is still the user's tap: after the awaits below
+      // Safari no longer counts it as one and keeps the sound off.
+      const resumed = ac.resume();
+      ac.addEventListener("statechange", audioState);
+      let wl: AudioWorkletNode | null = null;
+      try {
+        if (!ac.audioWorklet) throw new Error("no AudioWorklet");
+        await loadWorklet(ac);
+        wl = new AudioWorkletNode(ac, "soundlab-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      } catch { wl = null; }
+      if (wl) { const port = wl.port; post = (m) => port.postMessage(m); port.onmessage = (e: MessageEvent<Tick>) => onTick(e.data); node = wl; }
+      else node = startFallback(ac);
       node.connect(ac.destination);
       // A parallel tap for the scope and spectrum analyser.
       const analyser = ac.createAnalyser(); analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0.55;
       node.connect(analyser);
       $("scopeNote").hidden = true;
       startScopes(analyser, $<HTMLCanvasElement>("scope"), $<HTMLCanvasElement>("spectrum"), $("scopeReadout"));
-      node.port.onmessage = (e: MessageEvent<Tick>) => onTick(e.data);
       send({ type: "native", on: useNative });
       send({ type: "state", state });
-      await ac.resume();
-      $("audioNote").textContent = `Audio on · ${(ac.sampleRate / 1000).toFixed(1)} kHz · ${Math.round(((ac.baseLatency || 0) + (ac.outputLatency || 0)) * 1000) || "–"} ms`;
+      await Promise.race([resumed, new Promise((r) => setTimeout(r, 1500))]);
+      audioState();
       return true;
     } catch (e) {
-      showError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(msg);
+      $("audioNote").textContent = `Sound couldn't start: ${msg}`;
       starting = null;
       return false;
     }
@@ -236,6 +287,8 @@ function onTick(t: Tick) {
   const lvl = (x: number) => `${Math.max(0, Math.min(100, ((20 * Math.log10(x + 1e-9) + 48) / 48) * 100))}%`;
   $("mL").style.setProperty("--v", lvl(t.peakL)); $("mR").style.setProperty("--v", lvl(t.peakR));
   t.slots.forEach((p, i) => document.querySelector(`#lamp${i}`)?.classList.toggle("on", p > 0.003));
+  t.slots.forEach((p, i) => document.getElementById(`meter${i}`)?.style.setProperty("--v", lvl(p)));
+  document.getElementById("meterM")?.style.setProperty("--v", lvl(Math.max(t.peakL, t.peakR)));
   // Playhead.
   document.querySelectorAll(".step.now").forEach((e) => e.classList.remove("now"));
   if (t.playing) t.pos.forEach((pos, ti) => { if (pos >= 0 && Math.floor(pos / 16) === ui.page) document.querySelector(`#st${ti}_${pos % 16}`)?.classList.add("now"); });
@@ -307,7 +360,7 @@ function faceplate(i: number, m: MachineDef, preset: string, values: Record<stri
   const screw = () => (f.screws ? h("span", { class: "screw", "aria-hidden": "true" }) : null);
   body.append(h("div", { class: "plate" }, screw(), h("div", { class: "brandbox" }, h("span", { class: "brand" }, m.name), h("span", { class: "tag" }, f.tagline)), display, screw()));
   body.append(h("p", { class: "about" }, h("strong", {}, `Modelled on the ${m.inspiredBy}. `), m.about, " ", h("em", {}, "Not affiliated with or endorsed by the original's maker.")));
-  const grid = controlsFor(String(i), `s${i}`, [...m.params, PATCH_LEVEL, ...MIXER_PARAMS], values, f.look);
+  const grid = controlsFor(String(i), `s${i}`, [...m.params, PATCH_LEVEL, ...MIXER_PARAMS.filter((d) => d.group === "Part")], values, f.look);
   let k = 0;
   grid.querySelectorAll<HTMLFieldSetElement>("fieldset.grp").forEach((fs) => {
     const g = fs.querySelector("legend")?.textContent ?? "";
@@ -385,6 +438,7 @@ function renderRack() {
   rack.append(h("div", { class: "row wrap", style: "margin:0 0 4px" }, flip, perf, h("span", { class: "muted small" }, ui.back
     ? "The back of the rack: drag from an output (amber) to an input (blue) to patch. A slot's Level out drives sidechain ducking. Click a cable to set its amount or remove it."
     : "Every slot is a part with its own MIDI channel, key range and transpose (open a slot: Part), so the rack splits and layers like a Jupiter-8, a Nord Lead or a Virus in Multi mode.")));
+  renderMixer();
   if (ui.back) { renderRackBack(patchCtx, rack); return; }
   state.slots.forEach((_, i) => rack.append(slotUnit(i)));
   const unitBox = (key: number, title: string, about: string, body: () => HTMLElement) => {
@@ -395,9 +449,43 @@ function renderRack() {
     if (open) u.append(h("div", { class: "ubody" }, h("p", { class: "about" }, about), body()));
     return u;
   };
-  rack.append(unitBox(100, "Effects & master", "Every slot has delay and reverb sends. The delay follows the tempo. The master limiter keeps sample peaks under −1 dBFS.", () => controlsFor("fx", "fx", FX_PARAMS, state.fx)));
+  rack.append(unitBox(100, "Effects & master", "Every slot has delay and reverb sends. The delay follows the tempo. The master limiter keeps sample peaks under −1 dBFS.", () => controlsFor("fx", "fx", FX_PARAMS.filter((d) => d.id !== "master"), state.fx)));
   rack.append(unitBox(101, "Modulators", "Four LFOs (synced to the bar or free-running) and four macro knobs. They do nothing until you patch them in the patch bay.", () => controlsFor("mod", "mod", MOD_PARAMS, state.mod)));
   markPatched();
+}
+
+/* ---------------- The mixer: every slot's audio routes here ---------------- */
+// Every slot's audio output is wired to its own channel here (fixed, like a
+// normalled patch bay), and the channels sum to the master bus: delay and
+// reverb returns, drive, the master fader and the limiter, then the speakers.
+function renderMixer() {
+  const root = $("mixer"); root.replaceChildren();
+  const strips = h("div", { class: "mixer" });
+  const mixDefs = MIXER_PARAMS.filter((d) => d.group === "Slot output");
+  state.slots.forEach((s, i) => {
+    const m = machineById(s.machine);
+    const strip = h("div", { class: `strip ${m ? "" : "empty"} ${s.mute ? "muted" : ""}`, "data-slot": String(i) });
+    strip.append(h("div", { class: "sname", title: m ? `${m.name} · ${s.preset}` : "Empty slot" }, h("b", {}, String(i + 1)), h("span", {}, m ? m.name : "Empty")));
+    if (m) {
+      const mute = h("button", { class: "mini", "aria-pressed": String(s.mute), title: `Mute slot ${i + 1}` }, "M");
+      mute.addEventListener("click", () => { s.mute = !s.mute; commit(); renderRack(); });
+      const solo = h("button", { class: "mini solo", "aria-pressed": String(s.solo), title: `Solo slot ${i + 1}` }, "S");
+      solo.addEventListener("click", () => { s.solo = !s.solo; commit(); renderRack(); });
+      const knobs = h("div", { class: "sknobs" });
+      for (const d of mixDefs.filter((x) => x.id !== "level")) knobs.append(control(`s${i}.${d.id}`, d, s.params[d.id] ?? d.def, (v) => setParam(String(i), d.id, v), () => ui.armed !== null || learn.on, () => (learn.on ? learnPick(`s${i}.${d.id}`) : patchTo(`s${i}.${d.id}`)), {}));
+      const lv = mixDefs.find((x) => x.id === "level")!;
+      const fader = control(`s${i}.level`, lv, s.params.level ?? lv.def, (v) => setParam(String(i), "level", v), () => ui.armed !== null || learn.on, () => (learn.on ? learnPick(`s${i}.level`) : patchTo(`s${i}.level`)), { fader: true });
+      strip.append(knobs, h("div", { class: "sfader" }, h("div", { class: "smeter", "aria-hidden": "true" }, h("i", { id: `meter${i}` })), fader), h("div", { class: "row sbtn" }, mute, solo));
+    } else strip.append(h("p", { class: "muted small" }, "No machine"));
+    strips.append(strip);
+  });
+  const md = FX_PARAMS.find((d) => d.id === "master")!;
+  const master = h("div", { class: "strip master" }, h("div", { class: "sname" }, h("b", {}, "M"), h("span", {}, "Master")),
+    h("p", { class: "muted small" }, "Delay and reverb returns, drive, limiter"),
+    h("div", { class: "sfader" }, h("div", { class: "smeter", "aria-hidden": "true" }, h("i", { id: "meterM" })), control("fx.master", md, state.fx.master ?? md.def, (v) => setParam("fx", "master", v), () => ui.armed !== null || learn.on, () => (learn.on ? learnPick("fx.master") : patchTo("fx.master")), { fader: true })),
+    h("div", { class: "row sbtn" }, h("span", { class: "muted small" }, "→ speakers")));
+  strips.append(master);
+  root.append(h("p", { class: "muted small" }, "Every slot's audio is wired to its own channel here, always: nothing to patch. Channels sum to the master bus, which goes to your speakers and to Render. Cables on the back of the rack carry control signals (modulation and sidechain), not audio."), strips);
 }
 
 /* =========================================================================
@@ -1131,6 +1219,7 @@ $("redo").addEventListener("click", redo);
 function renderAll() { nameIn.value = state.name; syncTransport(); renderRack(); renderSeq(); renderPatch(); renderKeys(); renderProjectBox(); }
 renderAll();
 history.last = snap(); syncUndo(); renderAutosaves();
+setupSettings();
 // For automated tests and debugging: feed raw MIDI bytes as if from a device.
 (globalThis as unknown as { soundlab?: unknown }).soundlab = { midi: (bytes: number[]) => handleMidi(bytes) };
 let lastWidth = window.innerWidth;
